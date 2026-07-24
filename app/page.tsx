@@ -2,8 +2,8 @@
 'use client';
 import { useState } from 'react';
 
-// 1. Data Dummy Master Reference (Golden Reference SSOT)
-const SAMPLE_MASTER = [
+// Data Default Golden Reference Master (SSOT)
+const INITIAL_MASTER = [
   { customer_name_standard: "PLN" },
   { customer_name_standard: "TELKOM INDONESIA" },
   { customer_name_standard: "PERTAMINA" },
@@ -11,7 +11,7 @@ const SAMPLE_MASTER = [
   { customer_name_standard: "KRAKATAU STEEL" }
 ];
 
-// 2. Data Raw Contoh untuk Simulasi Batch
+// Data Raw Contoh untuk Simulasi Batch
 const SAMPLE_RAW_BATCH = [
   { customer_name_raw: "PT. PLN (Persero) Tbk" },
   { customer_name_raw: "PT TELKOM INDO" },
@@ -21,18 +21,52 @@ const SAMPLE_RAW_BATCH = [
 ];
 
 export default function Home() {
+  // State Master Data Referensi (Dapat ditambah/dihapus oleh user)
+  const [masterList, setMasterList] = useState<any[]>(INITIAL_MASTER);
+  const [newMasterInput, setNewMasterInput] = useState('');
+  const [showMasterManager, setShowMasterManager] = useState(false);
+
+  // State Input & Hasil AI
   const [singleInput, setSingleInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<any[]>([]);
 
+  // Fungsi Tambah Master Data Baru
+  const handleAddMaster = () => {
+    if (!newMasterInput.trim()) return;
+    const cleanName = newMasterInput.trim().toUpperCase();
+    if (masterList.some(m => m.customer_name_standard === cleanName)) {
+      alert('Nama master entitas ini sudah ada!');
+      return;
+    }
+    setMasterList([...masterList, { customer_name_standard: cleanName }]);
+    setNewMasterInput('');
+  };
+
+  // Fungsi Hapus Master Data
+  const handleDeleteMaster = (indexToDelete: number) => {
+    setMasterList(masterList.filter((_, idx) => idx !== indexToDelete));
+  };
+
+  // Fungsi Reset Master Data
+  const handleResetMaster = () => {
+    setMasterList(INITIAL_MASTER);
+  };
+
+  // Process AI menggunakan masterList dinamis
   const processAI = async (rawDataToProcess: any[]) => {
+    if (masterList.length === 0) {
+      alert('Master Data Referensi (SSOT) kosong! Harap tambahkan minimal 1 entitas master.');
+      return;
+    }
+
     setLoading(true);
     try {
       const response = await fetch('/api/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          masterData: SAMPLE_MASTER,
+          masterData: masterList,
           rawData: rawDataToProcess
         }),
       });
@@ -103,25 +137,80 @@ export default function Home() {
           </p>
         </header>
 
-        {/* Info Master Data SSOT */}
-        <div className="bg-white p-5 rounded-lg border border-gray-300 space-y-3">
-          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-            <h2 className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-              Golden Reference Master Data (SSOT)
-            </h2>
-            <span className="text-xs text-gray-500 font-medium">
-              {SAMPLE_MASTER.length} Entitas Terdaftar
-            </span>
+        {/* Kelola Master Data Referensi SSOT (Interactive Manager) */}
+        <div className="bg-white p-5 rounded-lg border border-gray-300 space-y-4">
+          <div className="flex items-center justify-between border-b border-gray-200 pb-3">
+            <div>
+              <h2 className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                Golden Reference Master Data (SSOT)
+              </h2>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Daftar entitas standar resmi yang menjadi acuan pencocokan data mentah.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setShowMasterManager(!showMasterManager)}
+                className="px-3 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 text-xs font-semibold rounded transition"
+              >
+                {showMasterManager ? 'Tutup Pengelola' : '+ Kelola / Tambah Master'}
+              </button>
+              {masterList.length !== INITIAL_MASTER.length && (
+                <button 
+                  onClick={handleResetMaster}
+                  className="px-2.5 py-1 text-xs text-gray-500 hover:text-gray-700 underline"
+                >
+                  Reset Default
+                </button>
+              )}
+            </div>
           </div>
+
+          {/* Form Tambah Master Data (Toggled) */}
+          {showMasterManager && (
+            <div className="bg-gray-50 p-3.5 rounded border border-gray-200 space-y-3 animate-in fade-in duration-300">
+              <label className="text-xs font-bold text-gray-700 block">
+                Tambah Entitas Master Standar Baru:
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newMasterInput}
+                  onChange={(e) => setNewMasterInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddMaster()}
+                  placeholder="Contoh: BANK BCA, PERUSAHAAN GAS NEGARA..."
+                  className="flex-1 px-3 py-1.5 bg-white border border-gray-300 rounded text-xs text-gray-900 focus:outline-none focus:border-blue-600"
+                />
+                <button
+                  onClick={handleAddMaster}
+                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded transition"
+                >
+                  + Tambah Entitas
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* List Master Data Badges */}
           <div className="flex flex-wrap gap-2">
-            {SAMPLE_MASTER.map((m, i) => (
-              <span key={i} className="px-3 py-1 bg-blue-50 text-blue-800 rounded border border-blue-200 text-xs sm:text-sm font-medium">
-                <span className="text-blue-500 font-mono mr-1.5">#0{i+1}</span>
+            {masterList.map((m, i) => (
+              <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-900 rounded border border-blue-200 text-xs font-semibold">
+                <span className="text-blue-500 font-mono">#0{i+1}</span>
                 {m.customer_name_standard}
+                {showMasterManager && (
+                  <button 
+                    onClick={() => handleDeleteMaster(i)}
+                    className="ml-1 text-red-500 hover:text-red-700 font-bold px-1 rounded hover:bg-red-50"
+                    title="Hapus entitas master ini"
+                  >
+                    ×
+                  </button>
+                )}
               </span>
             ))}
           </div>
         </div>
+
 
         {/* Control Panel Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
