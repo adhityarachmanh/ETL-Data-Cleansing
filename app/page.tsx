@@ -63,12 +63,31 @@ const INITIAL_RAW_BATCH = [
 ];
 
 export default function Home() {
+  // State Mode Utama Aplikasi (MATCHING vs PURE_NAME)
+  const [mainAppMode, setMainAppMode] = useState<'MATCHING' | 'PURE_NAME'>('MATCHING');
+
   // State Dynamic Domains
   const [domains, setDomains] = useState<Domain[]>([...INITIAL_DOMAINS]);
   const [activeDomainManager, setActiveDomainManager] = useState<string>(INITIAL_DOMAINS[0].id);
   const [newDomainInput, setNewDomainInput] = useState<{ [key: string]: string }>({});
 
-  // State Batch Data Mentah
+  // State Table Ref Embel-Embel Legalitas (Fitur Khusus Pak Zoel - Pure Name Stripper)
+  const [legalRefList, setLegalRefList] = useState<string[]>([
+    "PT", "CV", "UD", "PERSERO", "(PERSERO)", "TBK", ".TBK", "FIRMA", "NV", "INC", "LTD", "CORP"
+  ]);
+  const [newLegalInput, setNewLegalInput] = useState<string>('');
+
+  // Sample Batch khusus Pure Name Stripping
+  const INITIAL_PURE_NAME_BATCH = [
+    { raw_val: "PT Bukit Asem (persero) .TBK" },
+    { raw_val: "PT JAGA RAYA .tbk" },
+    { raw_val: "CV. MAJU SEJAHTERA (PERSERO)" },
+    { raw_val: "PT TELKOM INDONESIA (PERSERO) TBK." }
+  ];
+  const [pureNameBatchList, setPureNameBatchList] = useState<any[]>([...INITIAL_PURE_NAME_BATCH]);
+  const [singlePureInput, setSinglePureInput] = useState<string>('PT JAGA RAYA .tbk');
+
+  // State Batch Data Mentah SSOT
   const [rawBatchList, setRawBatchList] = useState<any[]>([...INITIAL_RAW_BATCH]);
   const [newRawInputs, setNewRawInputs] = useState<{ [key: string]: string }>({});
   const [showBatchManager, setShowBatchManager] = useState(false);
@@ -130,6 +149,26 @@ export default function Home() {
   // Helper untuk memicu Alert UI
   const showAlert = (message: string, title: string = 'Pemberitahuan') => {
     setAlertModal({ isOpen: true, title, message });
+  };
+
+  // --- MANAJEMEN EMBEL-EMBEL LEGALITAS (LOV PAK ZOEL) ---
+  const handleAddLegalRef = () => {
+    const val = newLegalInput.trim().toUpperCase();
+    if (!val) return;
+    if (legalRefList.includes(val)) {
+      showAlert("Item legalitas ini sudah ada di dalam tabel referensi!");
+      return;
+    }
+    setLegalRefList([...legalRefList, val]);
+    setNewLegalInput('');
+  };
+
+  const handleDeleteLegalRef = (idx: number) => {
+    setLegalRefList(legalRefList.filter((_, i) => i !== idx));
+  };
+
+  const handleResetLegalRef = () => {
+    setLegalRefList(["PT", "CV", "UD", "PERSERO", "(PERSERO)", "TBK", ".TBK", "FIRMA", "NV", "INC", "LTD", "CORP"]);
   };
 
   // --- TAMBAH / HAPUS DOMAIN MASTER CATEGORY ---
@@ -214,6 +253,13 @@ export default function Home() {
 
   // --- MANAJEMEN RAW BATCH DATA ---
   const handleAddRawToBatch = () => {
+    if (mainAppMode === 'PURE_NAME') {
+      if (!newLegalInput.trim()) return;
+      setPureNameBatchList([...pureNameBatchList, { raw_val: newLegalInput.trim() }]);
+      setNewLegalInput('');
+      return;
+    }
+
     const isAnyFilled = domains.some(d => newRawInputs[d.id]?.trim());
     if (!isAnyFilled) {
       showAlert("Minimal isi salah satu nilai raw data!");
@@ -225,11 +271,28 @@ export default function Home() {
   };
 
   const handleDeleteRawFromBatch = (index: number) => {
+    if (mainAppMode === 'PURE_NAME') {
+      setPureNameBatchList(pureNameBatchList.filter((_, idx) => idx !== index));
+      return;
+    }
     setRawBatchList(rawBatchList.filter((_, idx) => idx !== index));
   };
 
-  const handleResetBatch = () => setRawBatchList([...INITIAL_RAW_BATCH]);
-  const handleClearBatch = () => setRawBatchList([]);
+  const handleResetBatch = () => {
+    if (mainAppMode === 'PURE_NAME') {
+      setPureNameBatchList([...INITIAL_PURE_NAME_BATCH]);
+      return;
+    }
+    setRawBatchList([...INITIAL_RAW_BATCH]);
+  };
+
+  const handleClearBatch = () => {
+    if (mainAppMode === 'PURE_NAME') {
+      setPureNameBatchList([]);
+      return;
+    }
+    setRawBatchList([]);
+  };
 
   // --- MODAL EDIT OPEN & SAVE ---
   const openEditDomainItem = (domainId: string, itemIndex: number) => {
@@ -292,13 +355,37 @@ export default function Home() {
 
   // --- PROCESS AI ---
   const processAI = async (rawDataToProcess: any[]) => {
-    if (activeDomains.some(d => d.items.length === 0)) {
-      showAlert("Domain master yang Anda uji masih kosong. Harap isi minimal 1 item master di domain tersebut!");
-      return;
-    }
-
     setLoading(true);
+    setResults([]);
+
     try {
+      if (mainAppMode === 'PURE_NAME') {
+        const response = await fetch('/api/process', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode: 'PURE_NAME',
+            legalRefTable: legalRefList,
+            rawData: rawDataToProcess
+          }),
+        });
+
+        const resData = await response.json();
+        if (resData.success) {
+          setResults(resData.data);
+        } else {
+          showAlert('Gagal memproses Pure Name Stripper: ' + resData.error, 'API Error');
+        }
+        setLoading(false);
+        return;
+      }
+
+      if (activeDomains.some(d => d.items.length === 0)) {
+        showAlert("Domain master yang Anda uji masih kosong. Harap isi minimal 1 item master di domain tersebut!");
+        setLoading(false);
+        return;
+      }
+
       const response = await fetch('/api/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -325,6 +412,15 @@ export default function Home() {
   };
 
   const handleSingleTest = () => {
+    if (mainAppMode === 'PURE_NAME') {
+      if (!singlePureInput.trim()) {
+        showAlert('Masukkan nama perusahaan mentah terlebih dahulu!');
+        return;
+      }
+      processAI([{ raw_val: singlePureInput }]);
+      return;
+    }
+
     const targetDomainId = activeDomains[0]?.id;
     if (!singleInputs[targetDomainId]?.trim()) {
       showAlert(`Masukkan nilai raw untuk ${activeDomains[0]?.name || 'Domain'} terlebih dahulu!`);
@@ -333,7 +429,13 @@ export default function Home() {
     processAI([{ values: { ...singleInputs } }]);
   };
 
-  const handleBatchTest = () => processAI(rawBatchList);
+  const handleBatchTest = () => {
+    if (mainAppMode === 'PURE_NAME') {
+      processAI(pureNameBatchList);
+      return;
+    }
+    processAI(rawBatchList);
+  };
 
   // Helper Menghitung Average Score per Record
   const getRowAverageScore = (row: any) => {
@@ -343,18 +445,23 @@ export default function Home() {
     return scores.reduce((a, b) => a + b, 0) / scores.length;
   };
 
-  // Helper Cek Apakah Record Termasuk Clean / Match Terpenuhi (Threshold Dinamis)
+  // Helper Cek Apakah Record Termasuk Clean / Match Terpenuhi
   const isRecordClean = (row: any) => {
+    if (mainAppMode === 'PURE_NAME') return true;
     const avgScore = getRowAverageScore(row);
     return row.ai_status === 'AUTO_APPROVE' || avgScore >= autoApproveThreshold;
   };
 
   const isRecordReview = (row: any) => {
+    if (mainAppMode === 'PURE_NAME') return false;
     const avgScore = getRowAverageScore(row);
     return !isRecordClean(row) && (row.ai_status === 'REVIEW' || (avgScore >= stewardReviewThreshold && avgScore < autoApproveThreshold));
   };
 
   const getStatusBadge = (row: any) => {
+    if (mainAppMode === 'PURE_NAME') {
+      return <span className="px-2.5 py-1 rounded text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">CLEANSED 100%</span>;
+    }
     if (isRecordClean(row)) {
       return <span className="px-2.5 py-1 rounded text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">AUTO APPROVE</span>;
     }
@@ -381,16 +488,91 @@ export default function Home() {
               AI Data Quality Engine • Dynamic SSOT Standard
             </div>
             <span className="text-[11px] font-bold px-2.5 py-1 rounded border bg-purple-50 text-purple-700 border-purple-200">
-              {domains.length} Domain Aktif
+              {mainAppMode === 'PURE_NAME' ? `${legalRefList.length} Legal Noise LOV` : `${domains.length} Domain Aktif`}
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
             Simulasi AI Data Quality & Cleansing
           </h1>
           <p className="text-sm text-gray-600">
-            Mencocokkan data mentah berantakan ke <strong className="text-gray-800">Golden Reference Master Data</strong> secara independen per domain.
+            Mencocokkan data mentah berantakan ke <strong className="text-gray-800">Golden Reference Master Data</strong> serta <strong className="text-gray-800">Penormalan & Ekstrak Nama Utama Badan Usaha (Core Entity Cleansing)</strong>.
           </p>
         </header>
+
+        {/* TOP LEVEL MODE SWITCHER */}
+        <div className="bg-white p-2 rounded-lg border border-gray-300 flex flex-wrap gap-2 shadow-xs">
+          <button
+            onClick={() => { setMainAppMode('MATCHING'); setResults([]); }}
+            className={`flex-1 min-w-[220px] py-2.5 px-4 rounded-md text-xs font-bold transition flex items-center justify-center gap-2 ${
+              mainAppMode === 'MATCHING'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200'
+            }`}
+          >
+            <span>🎯 Mode 1: Pencocokan Master SSOT (Fuzzy Matching Engine)</span>
+          </button>
+
+          <button
+            onClick={() => { setMainAppMode('PURE_NAME'); setResults([]); }}
+            className={`flex-1 min-w-[220px] py-2.5 px-4 rounded-md text-xs font-bold transition flex items-center justify-center gap-2 ${
+              mainAppMode === 'PURE_NAME'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200'
+            }`}
+          >
+            <span>🧼 Mode 2: Ekstraksi Nama Utama Badan Usaha (Pure Entity Cleansing)</span>
+          </button>
+        </div>
+
+        {/* MODE 2 ONLY: TABEL REFERENSI EMBEL-EMBEL LEGALITAS (LOV) */}
+        {mainAppMode === 'PURE_NAME' && (
+          <div className="bg-white p-4 rounded-lg border border-gray-300 space-y-3 border-l-4 border-l-emerald-600 shadow-xs">
+            <div className="flex justify-between items-center flex-wrap gap-2 border-b border-gray-200 pb-2">
+              <div>
+                <h2 className="text-xs font-bold text-gray-800 uppercase tracking-wider">
+                  📋 Kamus Referensi Bentuk Hukum & Badan Usaha (Legal Entity LOV)
+                </h2>
+                <p className="text-xs text-gray-500">
+                  Variasi bentukan hukum berikut akan dieliminasi secara otomatis dari nama entitas untuk menghasilkan Nama Utama Badan Usaha (Core Entity Name).
+                </p>
+              </div>
+              <button
+                onClick={handleResetLegalRef}
+                className="px-3 py-1 text-xs text-gray-600 border border-gray-300 hover:bg-gray-50 rounded font-medium"
+              >
+                Reset Default LOV
+              </button>
+            </div>
+
+            {/* Input Add LOV */}
+            <div className="flex gap-2 max-w-md">
+              <input
+                type="text"
+                value={newLegalInput}
+                onChange={(e) => setNewLegalInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddLegalRef()}
+                placeholder="Tambah embel-embel (contoh: KOPERASI, YAYASAN)..."
+                className="flex-1 px-3 py-1.5 bg-white border border-gray-300 rounded text-xs focus:outline-none focus:border-emerald-600"
+              />
+              <button
+                onClick={handleAddLegalRef}
+                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded shadow-sm"
+              >
+                + Tambah Ref
+              </button>
+            </div>
+
+            {/* Badges List */}
+            <div className="flex flex-wrap gap-2 pt-1">
+              {legalRefList.map((item, idx) => (
+                <span key={idx} className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-900 border border-emerald-200 rounded-md text-xs font-bold">
+                  {item}
+                  <button onClick={() => handleDeleteLegalRef(idx)} className="text-red-500 hover:text-red-700 font-bold ml-1 text-xs">✕</button>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* MODE PILIH DOMAIN & THRESHOLD DINAMIS */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -737,10 +919,14 @@ export default function Home() {
               <div className="p-4 bg-gray-50 border-b border-gray-300 flex justify-between items-center">
                 <div>
                   <h2 className="font-bold text-sm text-gray-900">
-                    Audit Trail Cleansing ({activeDomains.map(d => d.name).join(' & ')})
+                    {mainAppMode === 'PURE_NAME'
+                      ? 'Audit Trail Ekstraksi & Penormalan Nama Utama Entitas'
+                      : `Audit Trail Cleansing (${activeDomains.map(d => d.name).join(' & ')})`}
                   </h2>
                   <p className="text-[11px] text-gray-500">
-                    Hasil perbandingan Data Mentah (Before) vs Master Reference (After)
+                    {mainAppMode === 'PURE_NAME'
+                      ? 'Hasil reduksi atribut bentuk hukum (PT, CV, Persero, Tbk) untuk menghasilkan Nama Utama Entitas Baku (Core Entity Name)'
+                      : 'Hasil perbandingan Data Mentah (Before) vs Master Reference (After)'}
                   </p>
                 </div>
                 <button
@@ -751,7 +937,116 @@ export default function Home() {
                 </button>
               </div>
 
-              {/* VIEW 1: CARD VIEW FOR MOBILE & TABLET (<1024px) */}
+              {/* MODE 2 PURE NAME RESULTS VIEW */}
+              {mainAppMode === 'PURE_NAME' ? (
+                <div>
+                  {/* VIEW 1: CARD VIEW FOR MOBILE & TABLET (<1024px) */}
+                  <div className="block lg:hidden p-4 space-y-4 bg-gray-50">
+                    {results.map((row, idx) => (
+                      <div key={idx} className="bg-white p-4 rounded-lg border border-gray-300 shadow-xs space-y-3">
+                        {/* Card Header */}
+                        <div className="flex justify-between items-center border-b border-gray-200 pb-2.5 flex-wrap gap-2">
+                          <span className="text-xs font-mono font-bold px-2 py-0.5 bg-gray-100 text-gray-800 rounded border border-gray-200">
+                            Record #{idx + 1 < 10 ? `0${idx + 1}` : idx + 1}
+                          </span>
+                          <span className="px-2.5 py-1 rounded text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            CLEANSED 100%
+                          </span>
+                        </div>
+
+                        {/* Card Details */}
+                        <div className="space-y-2.5 text-xs">
+                          {/* Raw Input */}
+                          <div className="bg-gray-50 p-2.5 rounded border border-gray-200 space-y-1">
+                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
+                              🔴 Data Mentah Entitas (Raw Input):
+                            </span>
+                            <span className="font-mono font-semibold text-gray-900 block break-all">
+                              {row.original || '-'}
+                            </span>
+                          </div>
+
+                          {/* Stripped Legal Noise */}
+                          <div className="bg-amber-50/50 p-2.5 rounded border border-amber-200 space-y-1">
+                            <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">
+                              🔸 Bentuk Hukum Tereliminasi (Legal Noise):
+                            </span>
+                            <div className="flex flex-wrap gap-1 pt-0.5">
+                              {Array.isArray(row.stripped_noise) && row.stripped_noise.length > 0 ? (
+                                row.stripped_noise.map((noise: string, nIdx: number) => (
+                                  <span key={nIdx} className="px-2 py-0.5 bg-amber-100 text-amber-900 rounded font-mono text-[10px] font-bold border border-amber-300">
+                                    {noise}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-gray-400 italic text-[11px]">Tidak ada embel-embel</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Cleansed Core Name */}
+                          <div className="bg-emerald-50 p-2.5 rounded border border-emerald-200 space-y-1">
+                            <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">
+                              🟢 Nama Utama Entitas Baku (Core Entity Name):
+                            </span>
+                            <span className="font-bold text-emerald-950 font-sans text-sm block">
+                              {row.cleansed_pure_name || '-'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* VIEW 2: TABLE VIEW FOR DESKTOP (>=1024px) */}
+                  <div className="hidden lg:block overflow-x-auto p-4">
+                    <table className="w-full text-xs text-left min-w-[650px] border-collapse">
+                      <thead className="bg-emerald-50 text-emerald-900 border-b border-emerald-200 uppercase font-bold text-[11px] tracking-wider">
+                        <tr>
+                          <th className="px-4 py-3.5 w-1/3">DATA MENTAH ENTITAS (RAW INPUT)</th>
+                          <th className="px-4 py-3.5 w-1/4">BENTUK HUKUM TERELIMINASI (LEGAL SUFFIX/PREFIX)</th>
+                          <th className="px-4 py-3.5 w-1/3">NAMA UTAMA ENTITAS BAKU (CORE ENTITY NAME)</th>
+                          <th className="px-4 py-3.5 text-center">STATUS</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200 bg-white">
+                        {results.map((row, idx) => (
+                          <tr key={idx} className="hover:bg-emerald-50/20 transition-colors">
+                            <td className="px-4 py-3 font-mono font-semibold text-gray-900 bg-gray-50/50">
+                              {row.original || '-'}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex flex-wrap gap-1">
+                                {Array.isArray(row.stripped_noise) && row.stripped_noise.length > 0 ? (
+                                  row.stripped_noise.map((noise: string, nIdx: number) => (
+                                    <span key={nIdx} className="px-2 py-0.5 bg-amber-100 text-amber-900 rounded font-mono text-[10px] font-bold border border-amber-300">
+                                      {noise}
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span className="text-gray-400 italic text-[11px]">Tidak ada embel-embel</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="inline-block px-3 py-1 bg-emerald-100 text-emerald-950 font-bold font-sans text-sm rounded border border-emerald-300 shadow-2xs">
+                                {row.cleansed_pure_name || '-'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-center align-middle whitespace-nowrap">
+                              <span className="px-2.5 py-1 rounded text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                CLEANSED 100%
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* VIEW 1: CARD VIEW FOR MOBILE & TABLET (<1024px) */}
               <div className="block lg:hidden p-4 space-y-4 bg-gray-50">
                 {results.map((row, idx) => (
                   <div key={idx} className="bg-white p-4 rounded-lg border border-gray-300 shadow-xs space-y-3">
@@ -937,6 +1232,8 @@ export default function Home() {
                   </tbody>
                 </table>
               </div>
+              </>
+            )}
             </div>
 
           </div>

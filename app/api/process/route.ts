@@ -26,8 +26,60 @@ function decideStatus(scores: number[], autoApproveMin: number = 90, stewardRevi
 
 export async function POST(req: NextRequest) {
     try {
-        // Tangkap data domains, rawData, dan threshold dinamis dari request body
-        const { domains, rawData, thresholds } = await req.json();
+        const body = await req.json();
+        const { mode, domains, rawData, thresholds, legalRefTable } = body;
+
+        // --- MODE 2: PURE NAME STRIPPER (FITUR PAK ZOEL - PEMBERSIH EMBEL-EMBEL LEGALITAS) ---
+        if (mode === 'PURE_NAME') {
+            const noiseList = Array.isArray(legalRefTable) && legalRefTable.length > 0
+                ? legalRefTable
+                : ["PT", "CV", "UD", "PERSERO", "(PERSERO)", "TBK", ".TBK", "FIRMA", "NV", "INC", "LTD", "CORP"];
+
+            const formattedRawForPureName = (rawData || []).map((item: any, idx: number) => ({
+                raw_index: idx,
+                raw_name: String(item.raw_val || item.values?.customer_name || item.values?.[domains?.[0]?.id] || '').trim(),
+            }));
+
+            const pureNamePrompt = `
+Anda adalah AI Data Engineer spesialis Cleansing & Parsing Nama Perusahaan (Legal Entity Noise Stripper).
+
+Tabel Referensi Embel-Embel Legalitas / Legal Noise LOV:
+${JSON.stringify(noiseList)}
+
+Data Mentah Perusahaan:
+${JSON.stringify(formattedRawForPureName)}
+
+Tugas Anda:
+1. Bersihkan Data Mentah dari SEMUA embel-embel legalitas (seperti PT, CV, (PERSERO), PERSERO, TBK, .TBK, UD, FIRMA, dll yang ada di tabel referensi maupun variasinya).
+2. Ambil MURNI NAMA KORPORASI / PERUSAHAAN SAJA tanpa kata legalitas tersebut.
+3. Contoh: "PT Bukit Asem (persero) .TBK" -> "BUKIT ASEM", "PT JAGA RAYA .tbk" -> "JAGA RAYA".
+
+Kembalikan HANYA array JSON dengan format persis seperti ini:
+[
+  {
+    "raw_index": 0,
+    "original": "PT JAGA RAYA .tbk",
+    "cleansed_pure_name": "JAGA RAYA",
+    "stripped_noise": ["PT", ".TBK"]
+  }
+]
+`;
+
+            const response = await ai.models.generateContent({
+                model: 'gemini-3.6-flash',
+                contents: pureNamePrompt,
+                config: {
+                    responseMimeType: 'application/json',
+                },
+            });
+
+            const aiResultText = (response.text || '').replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
+            const aiResultJson = JSON.parse(aiResultText || '[]');
+
+            return NextResponse.json({ success: true, mode: 'PURE_NAME', data: aiResultJson });
+        }
+
+        // --- MODE 1: FUZZY MATCHING MULTI-DOMAIN SSOT ---
         const autoApproveMin = Number(thresholds?.autoApprove) || 90;
         const stewardReviewMin = Number(thresholds?.stewardReview) || 75;
 
