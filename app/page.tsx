@@ -11,8 +11,8 @@ const INITIAL_MASTER = [
   { customer_name_standard: "KRAKATAU STEEL" }
 ];
 
-// Data Raw Contoh untuk Simulasi Batch
-const SAMPLE_RAW_BATCH = [
+// Data Default Raw Contoh untuk Simulasi Batch
+const INITIAL_RAW_BATCH = [
   { customer_name_raw: "PT. PLN (Persero) Tbk" },
   { customer_name_raw: "PT TELKOM INDO" },
   { customer_name_raw: "PERTAMINA, PT PERSERO" },
@@ -26,12 +26,17 @@ export default function Home() {
   const [newMasterInput, setNewMasterInput] = useState('');
   const [showMasterManager, setShowMasterManager] = useState(false);
 
-  // State Input & Hasil AI
+  // State Batch Data Mentah (Dapat ditambah/dihapus oleh user)
+  const [rawBatchList, setRawBatchList] = useState<any[]>(INITIAL_RAW_BATCH);
+  const [newRawInput, setNewRawInput] = useState('');
+  const [showBatchManager, setShowBatchManager] = useState(false);
+
+  // State Input Single & Hasil AI
   const [singleInput, setSingleInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<any[]>([]);
 
-  // Fungsi Tambah Master Data Baru
+  // --- FUNGSI PENGELOLA MASTER DATA ---
   const handleAddMaster = () => {
     if (!newMasterInput.trim()) return;
     const cleanName = newMasterInput.trim().toUpperCase();
@@ -43,20 +48,38 @@ export default function Home() {
     setNewMasterInput('');
   };
 
-  // Fungsi Hapus Master Data
   const handleDeleteMaster = (indexToDelete: number) => {
     setMasterList(masterList.filter((_, idx) => idx !== indexToDelete));
   };
 
-  // Fungsi Reset Master Data
   const handleResetMaster = () => {
     setMasterList(INITIAL_MASTER);
   };
 
-  // Process AI menggunakan masterList dinamis
+  // --- FUNGSI PENGELOLA BATCH DATA MENTAH ---
+  const handleAddRawToBatch = () => {
+    if (!newRawInput.trim()) return;
+    setRawBatchList([...rawBatchList, { customer_name_raw: newRawInput.trim() }]);
+    setNewRawInput('');
+  };
+
+  const handleDeleteRawFromBatch = (indexToDelete: number) => {
+    setRawBatchList(rawBatchList.filter((_, idx) => idx !== indexToDelete));
+  };
+
+  const handleResetBatch = () => {
+    setRawBatchList(INITIAL_RAW_BATCH);
+  };
+
+  // --- EXECUTE PROCESS AI ---
   const processAI = async (rawDataToProcess: any[]) => {
     if (masterList.length === 0) {
       alert('Master Data Referensi (SSOT) kosong! Harap tambahkan minimal 1 entitas master.');
+      return;
+    }
+
+    if (rawDataToProcess.length === 0) {
+      alert('Data Batch Mentah kosong! Harap tambahkan minimal 1 data raw.');
       return;
     }
 
@@ -89,7 +112,7 @@ export default function Home() {
   };
 
   const handleBatchTest = () => {
-    processAI(SAMPLE_RAW_BATCH);
+    processAI(rawBatchList);
   };
 
   const getStatusBadge = (status: string) => {
@@ -138,8 +161,8 @@ export default function Home() {
         </header>
 
         {/* Kelola Master Data Referensi SSOT (Interactive Manager) */}
-        <div className="bg-white p-5 rounded-lg border border-gray-300 space-y-4">
-          <div className="flex items-center justify-between border-b border-gray-200 pb-3">
+        <div className="bg-white p-4 sm:p-5 rounded-lg border border-gray-300 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-200 pb-3">
             <div>
               <h2 className="text-xs font-bold text-gray-700 uppercase tracking-wider">
                 Golden Reference Master Data (SSOT)
@@ -148,12 +171,12 @@ export default function Home() {
                 Daftar entitas standar resmi yang menjadi acuan pencocokan data mentah.
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 self-start sm:self-auto">
               <button 
                 onClick={() => setShowMasterManager(!showMasterManager)}
-                className="px-3 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 text-xs font-semibold rounded transition"
+                className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 text-xs font-semibold rounded transition"
               >
-                {showMasterManager ? 'Tutup Pengelola' : '+ Kelola / Tambah Master'}
+                {showMasterManager ? 'Tutup Pengelola' : '+ Kelola Master'}
               </button>
               {masterList.length !== INITIAL_MASTER.length && (
                 <button 
@@ -166,26 +189,26 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Form Tambah Master Data (Toggled) */}
+          {/* Form Tambah Master Data */}
           {showMasterManager && (
-            <div className="bg-gray-50 p-3.5 rounded border border-gray-200 space-y-3 animate-in fade-in duration-300">
+            <div className="bg-gray-50 p-3 sm:p-3.5 rounded border border-gray-200 space-y-2.5">
               <label className="text-xs font-bold text-gray-700 block">
                 Tambah Entitas Master Standar Baru:
               </label>
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="text"
                   value={newMasterInput}
                   onChange={(e) => setNewMasterInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleAddMaster()}
                   placeholder="Contoh: BANK BCA, PERUSAHAAN GAS NEGARA..."
-                  className="flex-1 px-3 py-1.5 bg-white border border-gray-300 rounded text-xs text-gray-900 focus:outline-none focus:border-blue-600"
+                  className="flex-1 px-3 py-2 bg-white border border-gray-300 rounded text-xs text-gray-900 focus:outline-none focus:border-blue-600"
                 />
                 <button
                   onClick={handleAddMaster}
-                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded transition"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded transition w-full sm:w-auto whitespace-nowrap"
                 >
-                  + Tambah Entitas
+                  + Tambah Master
                 </button>
               </div>
             </div>
@@ -211,12 +234,11 @@ export default function Home() {
           </div>
         </div>
 
-
         {/* Control Panel Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
 
           {/* Opsi 1: Test Ketik Single */}
-          <div className="bg-white p-5 rounded-lg border border-gray-300 space-y-4 flex flex-col justify-between">
+          <div className="bg-white p-4 sm:p-5 rounded-lg border border-gray-300 space-y-4 flex flex-col justify-between">
             <div>
               <h2 className="font-bold text-base text-gray-900">
                 1. Uji Coba Single Input
@@ -237,41 +259,96 @@ export default function Home() {
               <button
                 onClick={handleSingleTest}
                 disabled={loading || !singleInput.trim()}
-                className="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-medium rounded text-sm transition"
+                className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-medium rounded text-sm transition"
               >
                 {loading ? 'Memproses...' : 'Uji Cleansing Data Ini ➔'}
               </button>
             </div>
           </div>
 
-          {/* Opsi 2: Simulasi Batch */}
-          <div className="bg-white p-5 rounded-lg border border-gray-300 space-y-4 flex flex-col justify-between">
+          {/* Opsi 2: Simulasi Batch (Interactive) */}
+          <div className="bg-white p-4 sm:p-5 rounded-lg border border-gray-300 space-y-4 flex flex-col justify-between">
             <div>
-              <h2 className="font-bold text-base text-gray-900">
-                2. Simulasi Batch (5 Data Raw)
-              </h2>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                <h2 className="font-bold text-base text-gray-900">
+                  2. Simulasi Batch ({rawBatchList.length} Data Raw)
+                </h2>
+                <div className="flex items-center gap-1.5 self-start sm:self-auto">
+                  <button 
+                    onClick={() => setShowBatchManager(!showBatchManager)}
+                    className="text-xs text-blue-700 hover:underline font-medium"
+                  >
+                    {showBatchManager ? 'Tutup Pengelola' : '+ Edit List Batch'}
+                  </button>
+                  {rawBatchList.length !== INITIAL_RAW_BATCH.length && (
+                    <button 
+                      onClick={handleResetBatch}
+                      className="text-xs text-gray-500 hover:text-gray-700 underline ml-1"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+              </div>
               <p className="text-xs text-gray-600 mt-1">
-                Jalankan cleansing otomatis untuk 5 sampel data sekaligus.
+                Jalankan cleansing otomatis untuk seluruh sampel data raw di bawah ini.
               </p>
             </div>
-            <div className="space-y-3 pt-2">
-              <div className="bg-gray-50 p-2.5 rounded border border-gray-200 text-xs text-gray-600 space-y-1 font-mono">
-                <div>• PT. PLN (Persero) Tbk</div>
-                <div>• PT TELKOM INDO</div>
-                <div>• PERTAMINA, PT PERSERO</div>
-                <div>• PT WARUNG SEJAHTERA (Anomali)</div>
+
+            {/* Form Tambah Item Batch */}
+            {showBatchManager && (
+              <div className="bg-gray-50 p-3 rounded border border-gray-200 space-y-2">
+                <label className="text-xs font-bold text-gray-700 block">
+                  Tambah Data Mentah Baru ke Batch:
+                </label>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={newRawInput}
+                    onChange={(e) => setNewRawInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddRawToBatch()}
+                    placeholder="Contoh: PT. BCA (PERSERO) TBK..."
+                    className="flex-1 px-2.5 py-1.5 bg-white border border-gray-300 rounded text-xs text-gray-900 focus:outline-none focus:border-blue-600"
+                  />
+                  <button
+                    onClick={handleAddRawToBatch}
+                    className="px-3 py-1.5 bg-gray-800 hover:bg-gray-900 text-white text-xs font-bold rounded transition w-full sm:w-auto whitespace-nowrap"
+                  >
+                    + Item
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-3 pt-1">
+              <div className="bg-gray-50 p-2.5 rounded border border-gray-200 text-xs text-gray-700 space-y-1.5 max-h-36 overflow-y-auto">
+                {rawBatchList.map((item, idx) => (
+                  <div key={idx} className="flex justify-between items-center group font-mono text-[11px]">
+                    <span className="truncate pr-2">• {item.customer_name_raw}</span>
+                    {showBatchManager && (
+                      <button 
+                        onClick={() => handleDeleteRawFromBatch(idx)}
+                        className="text-red-500 hover:text-red-700 font-bold px-1.5 py-0.5 rounded hover:bg-red-50 text-xs shrink-0"
+                        title="Hapus item raw ini dari batch"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
               </div>
               <button
                 onClick={handleBatchTest}
-                disabled={loading}
-                className="w-full py-2 bg-gray-800 hover:bg-gray-900 disabled:bg-gray-300 text-white font-medium rounded text-sm transition"
+                disabled={loading || rawBatchList.length === 0}
+                className="w-full py-2.5 bg-gray-800 hover:bg-gray-900 disabled:bg-gray-300 text-white font-medium rounded text-sm transition"
               >
-                {loading ? 'Memproses Batch...' : 'Jalankan Simulasi Batch'}
+                {loading ? 'Memproses Batch...' : `Jalankan Simulasi Batch (${rawBatchList.length} Item)`}
               </button>
             </div>
           </div>
 
         </div>
+
 
         {/* METRIK RESULT / BEFORE vs AFTER DASHBOARD */}
         {results.length > 0 && (
