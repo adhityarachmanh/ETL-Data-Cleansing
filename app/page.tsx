@@ -64,12 +64,27 @@ export default function Home() {
     setNewMasterInput('');
   };
 
+  const handleEditMaster = (indexToEdit: number) => {
+    const currentName = masterList[indexToEdit].customer_name_standard;
+    const newVal = window.prompt("Edit Nama Master Entitas:", currentName);
+    if (newVal !== null && newVal.trim() !== "") {
+      const cleanName = newVal.trim().toUpperCase();
+      if (masterList.some((m, idx) => m.customer_name_standard === cleanName && idx !== indexToEdit)) {
+        alert('Nama master entitas ini sudah ada!');
+        return;
+      }
+      const newList = [...masterList];
+      newList[indexToEdit].customer_name_standard = cleanName;
+      setMasterList(newList);
+    }
+  };
+
   const handleDeleteMaster = (indexToDelete: number) => {
     setMasterList(masterList.filter((_, idx) => idx !== indexToDelete));
   };
 
   const handleResetMaster = () => setMasterList([...INITIAL_MASTER]);
-  const handleClearMaster = () => setMasterList([]); // Fungsi Kosongkan Data
+  const handleClearMaster = () => setMasterList([]);
 
   // --- FUNGSI PENGELOLA MASTER DATA SEKTOR ---
   const handleAddSector = () => {
@@ -83,12 +98,27 @@ export default function Home() {
     setNewSectorInput('');
   };
 
+  const handleEditSector = (indexToEdit: number) => {
+    const currentSector = sectorList[indexToEdit].sector_name_standard;
+    const newVal = window.prompt("Edit Sektor Master:", currentSector);
+    if (newVal !== null && newVal.trim() !== "") {
+      const cleanSector = newVal.trim().toUpperCase();
+      if (sectorList.some((s, idx) => s.sector_name_standard === cleanSector && idx !== indexToEdit)) {
+        alert('Sektor referensi ini sudah ada!');
+        return;
+      }
+      const newList = [...sectorList];
+      newList[indexToEdit].sector_name_standard = cleanSector;
+      setSectorList(newList);
+    }
+  };
+
   const handleDeleteSector = (indexToDelete: number) => {
     setSectorList(sectorList.filter((_, idx) => idx !== indexToDelete));
   };
 
   const handleResetSector = () => setSectorList([...INITIAL_SECTOR]);
-  const handleClearSector = () => setSectorList([]); // Fungsi Kosongkan Data
+  const handleClearSector = () => setSectorList([]);
 
   // --- FUNGSI PENGELOLA BATCH DATA MENTAH ---
   const handleAddRawToBatch = () => {
@@ -101,12 +131,33 @@ export default function Home() {
     setNewRawSector('');
   };
 
+  // Fungsi Edit untuk Raw Batch (Nama & Sektor)
+  const handleEditRawBatch = (indexToEdit: number) => {
+    const currentItem = rawBatchList[indexToEdit];
+
+    // 1. Prompt untuk Nama Raw
+    const updatedName = window.prompt("Edit Nama Raw Entitas:", currentItem.customer_name_raw);
+    if (updatedName === null) return; // Batal jika user klik Cancel
+
+    // 2. Prompt untuk Sektor Raw
+    const updatedSector = window.prompt("Edit Sektor Raw:", currentItem.sector_raw || "");
+    if (updatedSector === null) return; // Batal jika user klik Cancel
+
+    // Update Data
+    const newList = [...rawBatchList];
+    newList[indexToEdit] = {
+      customer_name_raw: updatedName.trim(),
+      sector_raw: updatedSector.trim()
+    };
+    setRawBatchList(newList);
+  };
+
   const handleDeleteRawFromBatch = (indexToDelete: number) => {
     setRawBatchList(rawBatchList.filter((_, idx) => idx !== indexToDelete));
   };
 
   const handleResetBatch = () => setRawBatchList([...INITIAL_RAW_BATCH]);
-  const handleClearBatch = () => setRawBatchList([]); // Fungsi Kosongkan Data
+  const handleClearBatch = () => setRawBatchList([]);
 
   // --- EXECUTE PROCESS AI ---
   const processAI = async (rawDataToProcess: any[]) => {
@@ -260,16 +311,26 @@ export default function Home() {
             <div className="flex flex-wrap gap-2">
               {masterList.length === 0 && <span className="text-xs text-gray-400 italic">Data kosong...</span>}
               {masterList.map((m, i) => (
-                <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-900 rounded border border-blue-200 text-xs font-semibold">
+                <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-900 rounded border border-blue-200 text-xs font-semibold group">
                   <span className="text-blue-500 font-mono">#0{i + 1}</span>
                   {m.customer_name_standard}
                   {showMasterManager && (
-                    <button
-                      onClick={() => handleDeleteMaster(i)}
-                      className="ml-1 text-red-500 hover:text-red-700 font-bold px-1 rounded hover:bg-red-50"
-                    >
-                      ×
-                    </button>
+                    <div className="ml-1 flex items-center">
+                      <button
+                        onClick={() => handleEditMaster(i)}
+                        className="text-blue-500 hover:text-blue-700 font-bold px-1 rounded hover:bg-blue-100"
+                        title="Edit"
+                      >
+                        ✎
+                      </button>
+                      <button
+                        onClick={() => handleDeleteMaster(i)}
+                        className="text-red-500 hover:text-red-700 font-bold px-1 rounded hover:bg-red-50"
+                        title="Hapus"
+                      >
+                        ×
+                      </button>
+                    </div>
                   )}
                 </span>
               ))}
@@ -335,12 +396,22 @@ export default function Home() {
                 <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-900 rounded border border-emerald-200 text-xs font-semibold">
                   {s.sector_name_standard}
                   {showSectorManager && (
-                    <button
-                      onClick={() => handleDeleteSector(i)}
-                      className="ml-1 text-red-500 hover:text-red-700 font-bold px-1 rounded hover:bg-red-50"
-                    >
-                      ×
-                    </button>
+                    <div className="ml-1 flex items-center">
+                      <button
+                        onClick={() => handleEditSector(i)}
+                        className="text-emerald-600 hover:text-emerald-800 font-bold px-1 rounded hover:bg-emerald-100"
+                        title="Edit"
+                      >
+                        ✎
+                      </button>
+                      <button
+                        onClick={() => handleDeleteSector(i)}
+                        className="text-red-500 hover:text-red-700 font-bold px-1 rounded hover:bg-red-50"
+                        title="Hapus"
+                      >
+                        ×
+                      </button>
+                    </div>
                   )}
                 </span>
               ))}
@@ -459,12 +530,22 @@ export default function Home() {
                       <div className="text-[10px] text-gray-500">Sektor: {item.sector_raw || '-'}</div>
                     </div>
                     {showBatchManager && (
-                      <button
-                        onClick={() => handleDeleteRawFromBatch(idx)}
-                        className="text-red-500 hover:text-red-700 font-bold px-1.5 py-0.5 rounded hover:bg-red-50 text-xs shrink-0"
-                      >
-                        ×
-                      </button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => handleEditRawBatch(idx)}
+                          className="text-gray-500 hover:text-gray-800 font-bold px-1.5 py-0.5 rounded hover:bg-gray-200 text-xs"
+                          title="Edit"
+                        >
+                          ✎
+                        </button>
+                        <button
+                          onClick={() => handleDeleteRawFromBatch(idx)}
+                          className="text-red-500 hover:text-red-700 font-bold px-1.5 py-0.5 rounded hover:bg-red-50 text-xs"
+                          title="Hapus"
+                        >
+                          ×
+                        </button>
+                      </div>
                     )}
                   </div>
                 ))}
