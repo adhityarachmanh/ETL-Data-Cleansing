@@ -31,17 +31,17 @@ const INITIAL_RAW_BATCH = [
 
 export default function Home() {
   // State Master Data Referensi NAMA
-  const [masterList, setMasterList] = useState<any[]>(INITIAL_MASTER);
+  const [masterList, setMasterList] = useState<any[]>([...INITIAL_MASTER]);
   const [newMasterInput, setNewMasterInput] = useState('');
   const [showMasterManager, setShowMasterManager] = useState(false);
 
   // State Master Data Referensi SEKTOR
-  const [sectorList, setSectorList] = useState<any[]>(INITIAL_SECTOR);
+  const [sectorList, setSectorList] = useState<any[]>([...INITIAL_SECTOR]);
   const [newSectorInput, setNewSectorInput] = useState('');
   const [showSectorManager, setShowSectorManager] = useState(false);
 
   // State Batch Data Mentah 
-  const [rawBatchList, setRawBatchList] = useState<any[]>(INITIAL_RAW_BATCH);
+  const [rawBatchList, setRawBatchList] = useState<any[]>([...INITIAL_RAW_BATCH]);
   const [newRawName, setNewRawName] = useState('');
   const [newRawSector, setNewRawSector] = useState('');
   const [showBatchManager, setShowBatchManager] = useState(false);
@@ -68,7 +68,8 @@ export default function Home() {
     setMasterList(masterList.filter((_, idx) => idx !== indexToDelete));
   };
 
-  const handleResetMaster = () => setMasterList(INITIAL_MASTER);
+  const handleResetMaster = () => setMasterList([...INITIAL_MASTER]);
+  const handleClearMaster = () => setMasterList([]); // Fungsi Kosongkan Data
 
   // --- FUNGSI PENGELOLA MASTER DATA SEKTOR ---
   const handleAddSector = () => {
@@ -86,7 +87,8 @@ export default function Home() {
     setSectorList(sectorList.filter((_, idx) => idx !== indexToDelete));
   };
 
-  const handleResetSector = () => setSectorList(INITIAL_SECTOR);
+  const handleResetSector = () => setSectorList([...INITIAL_SECTOR]);
+  const handleClearSector = () => setSectorList([]); // Fungsi Kosongkan Data
 
   // --- FUNGSI PENGELOLA BATCH DATA MENTAH ---
   const handleAddRawToBatch = () => {
@@ -103,7 +105,8 @@ export default function Home() {
     setRawBatchList(rawBatchList.filter((_, idx) => idx !== indexToDelete));
   };
 
-  const handleResetBatch = () => setRawBatchList(INITIAL_RAW_BATCH);
+  const handleResetBatch = () => setRawBatchList([...INITIAL_RAW_BATCH]);
+  const handleClearBatch = () => setRawBatchList([]); // Fungsi Kosongkan Data
 
   // --- EXECUTE PROCESS AI ---
   const processAI = async (rawDataToProcess: any[]) => {
@@ -216,12 +219,20 @@ export default function Home() {
                 >
                   {showMasterManager ? 'Tutup' : '+ Kelola Master'}
                 </button>
-                <button
-                  onClick={handleResetMaster}
-                  className="px-2.5 py-1 text-xs text-gray-500 hover:text-gray-700 underline"
-                >
-                  Reset
-                </button>
+                <div className="flex gap-2 border-l border-gray-300 pl-2">
+                  <button
+                    onClick={handleResetMaster}
+                    className="text-xs text-gray-500 hover:text-gray-700 underline"
+                  >
+                    Reset Default
+                  </button>
+                  <button
+                    onClick={handleClearMaster}
+                    className="text-xs text-red-500 hover:text-red-700 underline"
+                  >
+                    Kosongkan
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -247,6 +258,7 @@ export default function Home() {
             )}
 
             <div className="flex flex-wrap gap-2">
+              {masterList.length === 0 && <span className="text-xs text-gray-400 italic">Data kosong...</span>}
               {masterList.map((m, i) => (
                 <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-900 rounded border border-blue-200 text-xs font-semibold">
                   <span className="text-blue-500 font-mono">#0{i + 1}</span>
@@ -279,12 +291,20 @@ export default function Home() {
                 >
                   {showSectorManager ? 'Tutup' : '+ Kelola Sektor'}
                 </button>
-                <button
-                  onClick={handleResetSector}
-                  className="px-2.5 py-1 text-xs text-gray-500 hover:text-gray-700 underline"
-                >
-                  Reset
-                </button>
+                <div className="flex gap-2 border-l border-gray-300 pl-2">
+                  <button
+                    onClick={handleResetSector}
+                    className="text-xs text-gray-500 hover:text-gray-700 underline"
+                  >
+                    Reset Default
+                  </button>
+                  <button
+                    onClick={handleClearSector}
+                    className="text-xs text-red-500 hover:text-red-700 underline"
+                  >
+                    Kosongkan
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -310,6 +330,7 @@ export default function Home() {
             )}
 
             <div className="flex flex-wrap gap-2">
+              {sectorList.length === 0 && <span className="text-xs text-gray-400 italic">Data kosong...</span>}
               {sectorList.map((s, i) => (
                 <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-900 rounded border border-emerald-200 text-xs font-semibold">
                   {s.sector_name_standard}
@@ -381,14 +402,20 @@ export default function Home() {
                   >
                     {showBatchManager ? 'Tutup Pengelola' : '+ Edit List Batch'}
                   </button>
-                  {rawBatchList.length !== INITIAL_RAW_BATCH.length && (
+                  <div className="flex gap-2 border-l border-gray-300 pl-2">
                     <button
                       onClick={handleResetBatch}
-                      className="text-xs text-gray-500 hover:text-gray-700 underline ml-1"
+                      className="text-xs text-gray-500 hover:text-gray-700 underline"
                     >
-                      Reset
+                      Reset Default
                     </button>
-                  )}
+                    <button
+                      onClick={handleClearBatch}
+                      className="text-xs text-red-500 hover:text-red-700 underline"
+                    >
+                      Kosongkan
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -424,6 +451,7 @@ export default function Home() {
 
             <div className="space-y-3 pt-1">
               <div className="bg-gray-50 p-2.5 rounded border border-gray-200 text-xs text-gray-700 space-y-2 max-h-36 overflow-y-auto">
+                {rawBatchList.length === 0 && <div className="text-gray-400 italic py-1">Data batch kosong...</div>}
                 {rawBatchList.map((item, idx) => (
                   <div key={idx} className="flex justify-between items-center border-b border-gray-200 pb-1.5 last:border-0 last:pb-0">
                     <div className="truncate pr-2">
