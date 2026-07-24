@@ -59,7 +59,7 @@ const INITIAL_RAW_BATCH = [
 export default function Home() {
   // State Dynamic Domains
   const [domains, setDomains] = useState<Domain[]>([...INITIAL_DOMAINS]);
-  const [activeDomainManager, setActiveDomainManager] = useState<string | null>(null);
+  const [activeDomainManager, setActiveDomainManager] = useState<string>(INITIAL_DOMAINS[0].id);
   const [newDomainInput, setNewDomainInput] = useState<{ [key: string]: string }>({});
 
   // State Batch Data Mentah
@@ -148,7 +148,7 @@ export default function Home() {
 
   const handleDeleteDomainCategory = (domainId: string) => {
     if (domains.length <= 1) {
-      showAlert("Minimal harus ada 1 domain utama (Nama Entitas)!");
+      showAlert("Minimal harus ada 1 domain utama!");
       return;
     }
 
@@ -158,7 +158,11 @@ export default function Home() {
       title: 'Hapus Domain Master',
       message: `Yakin ingin menghapus seluruh Domain "${targetDomain?.name}"? Data referensi di dalamnya akan hilang.`,
       onConfirm: () => {
-        setDomains(domains.filter(d => d.id !== domainId));
+        const remaining = domains.filter(d => d.id !== domainId);
+        setDomains(remaining);
+        if (activeDomainManager === domainId) {
+          setActiveDomainManager(remaining[0]?.id || 'customer_name');
+        }
         setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null });
       }
     });
@@ -200,9 +204,9 @@ export default function Home() {
 
   // --- MANAJEMEN RAW BATCH DATA ---
   const handleAddRawToBatch = () => {
-    const firstDomainId = domains[0]?.id;
-    if (!newRawInputs[firstDomainId]?.trim()) {
-      showAlert(`Minimal isi ${domains[0]?.name || 'Nama Raw'}!`);
+    const isAnyFilled = domains.some(d => newRawInputs[d.id]?.trim());
+    if (!isAnyFilled) {
+      showAlert("Minimal isi salah satu nilai raw data!");
       return;
     }
 
@@ -259,9 +263,9 @@ export default function Home() {
       }));
     }
     else if (type === 'RAW_ITEM') {
-      const firstDomainId = domains[0]?.id;
-      if (!values[firstDomainId]?.trim()) {
-        return setEditModal({ ...editModal, error: `${domains[0]?.name} tidak boleh kosong!` });
+      const isAnyFilled = domains.some(d => values[d.id]?.trim());
+      if (!isAnyFilled) {
+        return setEditModal({ ...editModal, error: "Minimal salah satu nilai raw data harus diisi!" });
       }
       const newBatch = [...rawBatchList];
       newBatch[itemIndex] = { values: { ...values } };
@@ -271,10 +275,15 @@ export default function Home() {
     setEditModal({ isOpen: false, type: null, itemIndex: -1, values: {}, error: '' });
   };
 
+  // Active domains for testing based on selected Tab
+  const activeDomains = (activeDomainManager && activeDomainManager !== 'ALL')
+    ? domains.filter(d => d.id === activeDomainManager)
+    : domains;
+
   // --- PROCESS AI ---
   const processAI = async (rawDataToProcess: any[]) => {
-    if (domains.some(d => d.items.length === 0)) {
-      showAlert("Beberapa domain master Anda masih kosong. Harap isi minimal 1 item master di setiap domain!");
+    if (activeDomains.some(d => d.items.length === 0)) {
+      showAlert("Domain master yang Anda uji masih kosong. Harap isi minimal 1 item master di domain tersebut!");
       return;
     }
 
@@ -284,7 +293,7 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          domains: domains,
+          domains: activeDomains,
           rawData: rawDataToProcess
         }),
       });
@@ -302,8 +311,11 @@ export default function Home() {
   };
 
   const handleSingleTest = () => {
-    const firstDomainId = domains[0]?.id;
-    if (!singleInputs[firstDomainId]?.trim()) return;
+    const targetDomainId = activeDomains[0]?.id;
+    if (!singleInputs[targetDomainId]?.trim()) {
+      showAlert(`Masukkan nilai raw untuk ${activeDomains[0]?.name || 'Domain'} terlebih dahulu!`);
+      return;
+    }
     processAI([{ values: { ...singleInputs } }]);
   };
 
@@ -312,7 +324,7 @@ export default function Home() {
   // Helper Menghitung Average Score per Record
   const getRowAverageScore = (row: any) => {
     if (!row.domain_matches) return 0;
-    const scores = domains.map(d => Number(row.domain_matches?.[d.id]?.confidence || 0));
+    const scores = activeDomains.map(d => Number(row.domain_matches?.[d.id]?.confidence || 0));
     if (scores.length === 0) return 0;
     return scores.reduce((a, b) => a + b, 0) / scores.length;
   };
@@ -353,25 +365,68 @@ export default function Home() {
         <header className="bg-white p-5 sm:p-6 rounded-lg border border-gray-300 space-y-2">
           <div className="flex justify-between items-center flex-wrap gap-2">
             <div className="text-xs font-bold text-blue-700 uppercase tracking-wider">
-              AI Data Quality Engine • Dynamic Multi-Domain SSOT
+              AI Data Quality Engine • Dynamic SSOT Standard
             </div>
             <span className="text-[11px] font-bold px-2.5 py-1 rounded border bg-purple-50 text-purple-700 border-purple-200">
               {domains.length} Domain Aktif
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-            Simulasi Data Cleansing Dinamis
+            Simulasi AI Data Quality & Cleansing
           </h1>
           <p className="text-sm text-gray-600">
-            Mencocokkan data mentah berantakan ke <strong className="text-gray-800">N-Domain Referensi Master</strong> yang dapat ditambah secara bebas.
+            Mencocokkan data mentah berantakan ke <strong className="text-gray-800">Golden Reference Master Data</strong> secara independen per domain (Nama Debitur, Sektor Usaha, dll).
           </p>
         </header>
+
+        {/* PAK ZOEL FEATURE: MODE PILIH DOMAIN YANG INGIN DIUJI */}
+        <div className="bg-white p-4 rounded-lg border border-gray-300 space-y-3 shadow-xs">
+          <div className="flex items-center justify-between flex-wrap gap-2 border-b border-gray-200 pb-2.5">
+            <div>
+              <h2 className="text-xs font-bold text-gray-800 uppercase tracking-wider">🎯 Pilih Domain Referensi yang Ingin Diuji:</h2>
+              <p className="text-xs text-gray-500">Pilih mau menguji Nama Debitur atau Sektor Usaha secara independen ke referensinya masing-masing.</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 pt-1">
+            {domains.map((d) => (
+              <button
+                key={d.id}
+                onClick={() => {
+                  setActiveDomainManager(d.id);
+                  setResults([]);
+                }}
+                className={`px-4 py-2 rounded-lg text-xs font-bold border transition flex items-center gap-2 ${
+                  (activeDomainManager || domains[0]?.id) === d.id
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                    : 'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100'
+                }`}
+              >
+                <span>{d.id === 'customer_name' ? '🏢' : d.id === 'sector' ? '🏭' : '📌'}</span>
+                {d.name} ({d.items.length} Master)
+              </button>
+            ))}
+            <button
+              onClick={() => {
+                setActiveDomainManager('ALL');
+                setResults([]);
+              }}
+              className={`px-4 py-2 rounded-lg text-xs font-bold border transition flex items-center gap-2 ${
+                activeDomainManager === 'ALL'
+                  ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                  : 'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100'
+              }`}
+            >
+              <span>🌐</span>
+              Semua Domain (Multi-Domain)
+            </button>
+          </div>
+        </div>
 
         {/* TOP BAR: KELOLA DOMAIN DINAMIS */}
         <div className="flex justify-between items-center bg-white p-4 rounded-lg border border-gray-300 flex-wrap gap-3">
           <div>
-            <h2 className="text-sm font-bold text-gray-800 uppercase tracking-wider">Pengelola Domain Referensi Master (SSOT)</h2>
-            <p className="text-xs text-gray-500">Tambah atau kelola domain data untuk dikomparasi oleh AI.</p>
+            <h2 className="text-xs font-bold text-gray-800 uppercase tracking-wider">Pengelola Domain Referensi Master (SSOT)</h2>
+            <p className="text-xs text-gray-500">Tambah atau kelola item referensi master di setiap domain.</p>
           </div>
           <div className="flex gap-2">
             <button
@@ -391,8 +446,8 @@ export default function Home() {
 
         {/* GRID PENGELOLA SETIAP DOMAIN */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {domains.map((domain, domIdx) => (
-            <div key={domain.id} className="bg-white p-4 rounded-lg border border-gray-300 space-y-3 flex flex-col justify-between">
+          {activeDomains.map((domain, domIdx) => (
+            <div key={domain.id} className="bg-white p-4 rounded-lg border border-gray-300 space-y-3 flex flex-col justify-between border-l-4 border-l-blue-600">
               <div>
                 <div className="flex justify-between items-center border-b border-gray-200 pb-2.5">
                   <div className="flex items-center gap-2">
@@ -404,12 +459,6 @@ export default function Home() {
                     </h3>
                   </div>
                   <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => setActiveDomainManager(activeDomainManager === domain.id ? null : domain.id)}
-                      className="px-2 py-1 text-[11px] bg-gray-100 hover:bg-gray-200 text-gray-700 rounded font-medium"
-                    >
-                      {activeDomainManager === domain.id ? 'Tutup' : 'Kelola'}
-                    </button>
                     {domIdx > 0 && (
                       <button
                         onClick={() => handleDeleteDomainCategory(domain.id)}
@@ -423,31 +472,29 @@ export default function Home() {
                 </div>
 
                 {/* Form Tambah Item Ke Domain */}
-                {activeDomainManager === domain.id && (
-                  <div className="mt-3 bg-gray-50 p-2.5 rounded border border-gray-200 space-y-2">
-                    <div className="flex gap-1.5">
-                      <input
-                        type="text"
-                        value={newDomainInput[domain.id] || ''}
-                        onChange={(e) => setNewDomainInput({ ...newDomainInput, [domain.id]: e.target.value })}
-                        onKeyDown={(e) => e.key === 'Enter' && handleAddItemToDomain(domain.id)}
-                        placeholder={`Tambah ke ${domain.name}...`}
-                        className="flex-1 px-2.5 py-1 bg-white border border-gray-300 rounded text-xs focus:outline-none focus:border-blue-600"
-                      />
-                      <button
-                        onClick={() => handleAddItemToDomain(domain.id)}
-                        className="px-2.5 py-1 bg-blue-600 text-white text-xs font-bold rounded"
-                      >
-                        +
-                      </button>
-                    </div>
-                    <div className="flex justify-end gap-2 pt-1 border-t border-gray-200">
-                      <button onClick={() => handleClearDomainItems(domain.id)} className="text-[10px] text-red-500 underline">
-                        Kosongkan Item
-                      </button>
-                    </div>
+                <div className="mt-3 bg-gray-50 p-2.5 rounded border border-gray-200 space-y-2">
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      value={newDomainInput[domain.id] || ''}
+                      onChange={(e) => setNewDomainInput({ ...newDomainInput, [domain.id]: e.target.value })}
+                      onKeyDown={(e) => e.key === 'Enter' && handleAddItemToDomain(domain.id)}
+                      placeholder={`Tambah master ${domain.name}...`}
+                      className="flex-1 px-2.5 py-1 bg-white border border-gray-300 rounded text-xs focus:outline-none focus:border-blue-600"
+                    />
+                    <button
+                      onClick={() => handleAddItemToDomain(domain.id)}
+                      className="px-2.5 py-1 bg-blue-600 text-white text-xs font-bold rounded"
+                    >
+                      +
+                    </button>
                   </div>
-                )}
+                  <div className="flex justify-end gap-2 pt-1 border-t border-gray-200">
+                    <button onClick={() => handleClearDomainItems(domain.id)} className="text-[10px] text-red-500 underline">
+                      Kosongkan Item
+                    </button>
+                  </div>
+                </div>
 
                 {/* List Badges Item Domain */}
                 <div className="flex flex-wrap gap-1.5 mt-3">
@@ -455,12 +502,10 @@ export default function Home() {
                   {domain.items.map((item, itemIdx) => (
                     <span key={itemIdx} className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-900 border border-blue-200 rounded text-xs font-semibold">
                       {item}
-                      {activeDomainManager === domain.id && (
-                        <span className="flex gap-0.5 ml-1">
-                          <button onClick={() => openEditDomainItem(domain.id, itemIdx)} className="text-blue-600 hover:text-blue-800 text-[10px]">✎</button>
-                          <button onClick={() => handleDeleteItemFromDomain(domain.id, itemIdx)} className="text-red-500 hover:text-red-700 text-[10px]">✕</button>
-                        </span>
-                      )}
+                      <span className="flex gap-0.5 ml-1">
+                        <button onClick={() => openEditDomainItem(domain.id, itemIdx)} className="text-blue-600 hover:text-blue-800 text-[10px]">✎</button>
+                        <button onClick={() => handleDeleteItemFromDomain(domain.id, itemIdx)} className="text-red-500 hover:text-red-700 text-[10px]">✕</button>
+                      </span>
                     </span>
                   ))}
                 </div>
@@ -480,17 +525,19 @@ export default function Home() {
           <div className="bg-white p-5 rounded-lg border border-gray-300 space-y-4 flex flex-col justify-between">
             <div>
               <h2 className="font-bold text-base text-gray-900">1. Uji Coba Single Input</h2>
-              <p className="text-xs text-gray-600 mt-0.5">Masukkan data mentah sesuai domain yang tersedia.</p>
+              <p className="text-xs text-gray-600 mt-0.5">
+                Masukkan contoh data mentah untuk domain <strong>{activeDomains.map(d => d.name).join(', ')}</strong>.
+              </p>
             </div>
             <div className="space-y-2.5 pt-2">
-              {domains.map((d) => (
+              {activeDomains.map((d) => (
                 <div key={d.id}>
                   <label className="text-[11px] font-bold text-gray-600 uppercase block mb-1">{d.name} Raw:</label>
                   <input
                     type="text"
                     value={singleInputs[d.id] || ''}
                     onChange={(e) => setSingleInputs({ ...singleInputs, [d.id]: e.target.value })}
-                    placeholder={`Masukkan ${d.name}...`}
+                    placeholder={d.id === 'customer_name' ? 'Contoh: PT. PLN (Persero) Tbk...' : d.id === 'sector' ? 'Contoh: Listrik & Energi...' : `Masukkan ${d.name}...`}
                     className="w-full px-3 py-1.5 bg-white border border-gray-300 rounded text-xs focus:outline-none focus:border-blue-600"
                   />
                 </div>
@@ -498,9 +545,9 @@ export default function Home() {
               <button
                 onClick={handleSingleTest}
                 disabled={loading}
-                className="w-full py-2.5 mt-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-medium rounded text-sm transition"
+                className="w-full py-2.5 mt-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-medium rounded text-sm transition shadow-xs"
               >
-                {loading ? 'Memproses AI...' : 'Uji Cleansing Data Ini ➔'}
+                {loading ? 'Memproses AI...' : `Uji Cleansing ${activeDomains[0]?.name || 'Data'} ➔`}
               </button>
             </div>
           </div>
@@ -509,7 +556,7 @@ export default function Home() {
           <div className="bg-white p-5 rounded-lg border border-gray-300 space-y-4 flex flex-col justify-between">
             <div>
               <div className="flex justify-between items-center">
-                <h2 className="font-bold text-base text-gray-900">2. Simulasi Batch ({rawBatchList.length} Data)</h2>
+                <h2 className="font-bold text-base text-gray-900">2. Simulasi Batch ({rawBatchList.length} Data Mentah)</h2>
                 <div className="flex gap-2">
                   <button onClick={() => setShowBatchManager(!showBatchManager)} className="text-xs text-blue-700 hover:underline">
                     {showBatchManager ? 'Tutup Pengelola' : '+ Edit Batch'}
@@ -544,30 +591,37 @@ export default function Home() {
             <div className="space-y-3 pt-1">
               <div className="bg-gray-50 p-2.5 rounded border border-gray-200 text-xs space-y-2 max-h-48 overflow-y-auto">
                 {rawBatchList.length === 0 && <div className="text-gray-400 italic">Batch data kosong...</div>}
-                {rawBatchList.map((item, idx) => (
-                  <div key={idx} className="flex justify-between items-center border-b border-gray-200 pb-1.5 last:border-0">
-                    <div className="space-y-0.5 truncate pr-2">
-                      <div className="font-bold text-gray-900">{item.values?.[domains[0]?.id]}</div>
-                      <div className="text-[10px] text-gray-500 flex flex-wrap gap-2">
-                        {domains.slice(1).map(d => (
-                          <span key={d.id}>{d.name}: <strong className="text-gray-700">{item.values?.[d.id] || '-'}</strong></span>
-                        ))}
+                {rawBatchList.map((item, idx) => {
+                  const targetDomId = activeDomains[0]?.id;
+                  const displayVal = item.values?.[targetDomId] || '-';
+
+                  return (
+                    <div key={idx} className="flex justify-between items-center border-b border-gray-200 pb-1.5 last:border-0">
+                      <div className="space-y-0.5 truncate pr-2">
+                        <div className="font-bold text-gray-900">• {displayVal}</div>
+                        {activeDomains.length > 1 && (
+                          <div className="text-[10px] text-gray-500 flex flex-wrap gap-2">
+                            {activeDomains.slice(1).map(d => (
+                              <span key={d.id}>{d.name}: <strong className="text-gray-700">{item.values?.[d.id] || '-'}</strong></span>
+                            ))}
+                          </div>
+                        )}
                       </div>
+                      {showBatchManager && (
+                        <div className="flex gap-1 shrink-0">
+                          <button onClick={() => openEditRawItem(idx)} className="text-gray-600 hover:bg-gray-200 font-bold px-1.5 py-0.5 rounded text-xs">✎</button>
+                          <button onClick={() => handleDeleteRawFromBatch(idx)} className="text-red-500 hover:bg-red-50 font-bold px-1.5 py-0.5 rounded text-xs">✕</button>
+                        </div>
+                      )}
                     </div>
-                    {showBatchManager && (
-                      <div className="flex gap-1 shrink-0">
-                        <button onClick={() => openEditRawItem(idx)} className="text-gray-600 hover:bg-gray-200 font-bold px-1.5 py-0.5 rounded text-xs">✎</button>
-                        <button onClick={() => handleDeleteRawFromBatch(idx)} className="text-red-500 hover:bg-red-50 font-bold px-1.5 py-0.5 rounded text-xs">✕</button>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <button
                 onClick={handleBatchTest}
                 disabled={loading || rawBatchList.length === 0}
-                className="w-full py-2.5 bg-gray-800 hover:bg-gray-900 disabled:bg-gray-300 text-white font-medium rounded text-sm transition"
+                className="w-full py-2.5 bg-gray-800 hover:bg-gray-900 disabled:bg-gray-300 text-white font-medium rounded text-sm transition shadow-xs"
               >
                 {loading ? 'Memproses Batch...' : `Jalankan Simulasi Batch (${rawBatchList.length} Item)`}
               </button>
@@ -605,10 +659,10 @@ export default function Home() {
               <div className="p-4 bg-gray-50 border-b border-gray-300 flex justify-between items-center">
                 <div>
                   <h2 className="font-bold text-sm text-gray-900">
-                    Audit Trail Cleansing Multi-Domain
+                    Audit Trail Cleansing ({activeDomains.map(d => d.name).join(' & ')})
                   </h2>
                   <p className="text-[11px] text-gray-500">
-                    Hasil perbandingan Data Mentah (Before) vs Master Reference (After) per domain
+                    Hasil perbandingan Data Mentah (Before) vs Master Reference (After)
                   </p>
                 </div>
                 <button
@@ -620,12 +674,12 @@ export default function Home() {
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-xs text-left min-w-[850px] border-collapse">
+                <table className="w-full text-xs text-left min-w-[750px] border-collapse">
                   <thead className="bg-gray-100 text-gray-700 border-b border-gray-300 uppercase font-bold text-[11px] tracking-wider">
                     <tr>
                       <th className="px-4 py-3.5 w-1/3">RAW DATA (BEFORE)</th>
                       <th className="px-4 py-3.5 w-1/3">SSOT MATCHED (AFTER)</th>
-                      {domains.map((d) => (
+                      {activeDomains.map((d) => (
                         <th key={d.id} className="px-3 py-3.5 text-center whitespace-nowrap">
                           {d.name} SCORE
                         </th>
@@ -639,7 +693,7 @@ export default function Home() {
                         {/* BEFORE */}
                         <td className="px-4 py-3 font-sans align-top">
                           <div className="space-y-2">
-                            {domains.map((d) => (
+                            {activeDomains.map((d) => (
                               <div key={d.id} className="flex flex-col">
                                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">
                                   {d.name}
@@ -655,7 +709,7 @@ export default function Home() {
                         {/* AFTER */}
                         <td className="px-4 py-3 font-sans align-top">
                           <div className="space-y-2">
-                            {domains.map((d) => {
+                            {activeDomains.map((d) => {
                               const matchedVal = row.domain_matches?.[d.id]?.matched_val;
                               const isNotFound = matchedVal === 'TIDAK DITEMUKAN';
                               return (
@@ -678,7 +732,7 @@ export default function Home() {
                         </td>
 
                         {/* SCORES PER DOMAIN */}
-                        {domains.map((d) => {
+                        {activeDomains.map((d) => {
                           const score = Number(row.domain_matches?.[d.id]?.confidence || 0);
                           let scoreColor = 'text-red-600 bg-red-50 border-red-200';
                           if (score >= 80) scoreColor = 'text-emerald-700 bg-emerald-50 border-emerald-200';
