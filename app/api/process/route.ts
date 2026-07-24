@@ -35,32 +35,48 @@ export async function POST(req: NextRequest) {
                 ? legalRefTable
                 : ["PT", "CV", "UD", "PERSERO", "(PERSERO)", "TBK", ".TBK", "FIRMA", "NV", "INC", "LTD", "CORP"];
 
-            const formattedRawForPureName = (rawData || []).map((item: any, idx: number) => ({
-                raw_index: idx,
-                raw_name: String(item.raw_val || item.values?.customer_name || item.values?.[domains?.[0]?.id] || '').trim(),
-            }));
+            const activeDomainList = (domains && Array.isArray(domains) && domains.length > 0)
+                ? domains
+                : [{ id: 'customer_name', name: 'Nama Perusahaan' }];
+
+            const formattedRawForPureName = (rawData || []).map((item: any, idx: number) => {
+                const valuesMap: { [key: string]: string } = {};
+                if (item.raw_val) {
+                    valuesMap[activeDomainList[0].id] = String(item.raw_val).trim();
+                } else if (item.values) {
+                    activeDomainList.forEach((d: any) => {
+                        valuesMap[d.id] = String(item.values[d.id] || '').trim();
+                    });
+                } else {
+                    valuesMap[activeDomainList[0].id] = String(item || '').trim();
+                }
+                return {
+                    raw_index: idx,
+                    field_values: valuesMap
+                };
+            });
 
             const pureNamePrompt = `
-Anda adalah AI Data Engineer spesialis Cleansing & Parsing Nama Perusahaan (Legal Entity Noise Stripper).
+Anda adalah AI Data Engineer spesialis Cleansing & Parsing Nama Perusahaan/Badan Usaha (Legal Entity Noise Stripper).
 
 Tabel Referensi Embel-Embel Legalitas / Legal Noise LOV:
 ${JSON.stringify(noiseList)}
 
-Data Mentah Perusahaan:
+Data Mentah Perusahaan (Multi-Domain Fields):
 ${JSON.stringify(formattedRawForPureName)}
 
 Tugas Anda:
-1. Bersihkan Data Mentah dari SEMUA embel-embel legalitas (seperti PT, CV, (PERSERO), PERSERO, TBK, .TBK, UD, FIRMA, dll yang ada di tabel referensi maupun variasinya).
-2. Ambil MURNI NAMA KORPORASI / PERUSAHAAN SAJA tanpa kata legalitas tersebut.
+1. Untuk SETIAP field di "field_values", bersihkan nilai mentah dari SEMUA embel-embel legalitas (seperti PT, CV, (PERSERO), PERSERO, TBK, .TBK, UD, FIRMA, dll yang ada di tabel referensi maupun variasinya).
+2. Ambil MURNI NAMA KORPORASI / UTAMA ENTITAS SAJA tanpa kata legalitas tersebut.
 3. Contoh: "PT Bukit Asem (persero) .TBK" -> "BUKIT ASEM", "PT JAGA RAYA .tbk" -> "JAGA RAYA".
 
 Kembalikan HANYA array JSON dengan format persis seperti ini:
 [
   {
     "raw_index": 0,
-    "original": "PT JAGA RAYA .tbk",
-    "cleansed_pure_name": "JAGA RAYA",
-    "stripped_noise": ["PT", ".TBK"]
+    "domain_cleansed": {
+      ${activeDomainList.map((d: any) => `"${d.id}": { "original": "PT JAGA RAYA .tbk", "cleansed_pure_name": "JAGA RAYA", "stripped_noise": ["PT", ".TBK"] }`).join(',\n      ')}
+    }
   }
 ]
 `;
@@ -76,7 +92,31 @@ Kembalikan HANYA array JSON dengan format persis seperti ini:
             const aiResultText = (response.text || '').replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
             const aiResultJson = JSON.parse(aiResultText || '[]');
 
-            return NextResponse.json({ success: true, mode: 'PURE_NAME', data: aiResultJson });
+            // Format fallback response agar konsisten
+            const finalPureResults = aiResultJson.map((res: any) => {
+                const rawItem = formattedRawForPureName.find((r: any) => r.raw_index === res.raw_index);
+                const domainCleansedMap: { [key: string]: any } = {};
+
+                activeDomainList.forEach((d: any) => {
+                    const cleansedInfo = res.domain_cleansed?.[d.id];
+                    domainCleansedMap[d.id] = {
+                        original: cleansedInfo?.original || rawItem?.field_values?.[d.id] || '-',
+                        cleansed_pure_name: cleansedInfo?.cleansed_pure_name || rawItem?.field_values?.[d.id] || '-',
+                        stripped_noise: Array.isArray(cleansedInfo?.stripped_noise) ? cleansedInfo.stripped_noise : []
+                    };
+                });
+
+                return {
+                    raw_index: res.raw_index,
+                    domain_cleansed: domainCleansedMap,
+                    // Backward compatibility fields untuk single item lookup
+                    original: domainCleansedMap[activeDomainList[0].id]?.original || '-',
+                    cleansed_pure_name: domainCleansedMap[activeDomainList[0].id]?.cleansed_pure_name || '-',
+                    stripped_noise: domainCleansedMap[activeDomainList[0].id]?.stripped_noise || []
+                };
+            });
+
+            return NextResponse.json({ success: true, mode: 'PURE_NAME', data: finalPureResults });
         }
 
         // --- MODE 1: FUZZY MATCHING MULTI-DOMAIN SSOT ---

@@ -26,38 +26,38 @@ const INITIAL_DOMAINS: Domain[] = [
 const INITIAL_RAW_BATCH = [
   {
     values: {
-      customer_name: "PT. PLN (Persero) Tbk",
-      sector: "Listrik & Energi"
+      customer_name: "PT Bukit Asem (persero) .TBK",
+      sector: "PT Pertambangan Energi (PERSERO) TBK"
     }
   },
   {
     values: {
-      customer_name: "PT TELKOM INDO",
-      sector: "Telco"
+      customer_name: "PT. PLN (Persero) Tbk",
+      sector: "PT Ketenagalistrikan (PERSERO)"
+    }
+  },
+  {
+    values: {
+      customer_name: "PT TELKOM INDO (PERSERO) TBK",
+      sector: "CV. Telekomunikasi Digital"
     }
   },
   {
     values: {
       customer_name: "PERTAMINA, PT PERSERO",
-      sector: "Minyak Bumi"
+      sector: "PT Minyak dan Gas Bumi (PERSERO)"
     }
   },
   {
     values: {
       customer_name: "PT Listrik Mandiri",
-      sector: "Pengairan & Irigasi"
+      sector: "UD. Pengairan & Irigasi"
     }
   },
   {
     values: {
-      customer_name: "MANDIRI BANK PT",
-      sector: "Keuangan"
-    }
-  },
-  {
-    values: {
-      customer_name: "PT WARUNG SEJAHTERA",
-      sector: "Ritel Dagang"
+      customer_name: "MANDIRI BANK PT (PERSERO) TBK",
+      sector: "PT Perbankan dan Keuangan"
     }
   }
 ];
@@ -365,6 +365,7 @@ export default function Home() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             mode: 'PURE_NAME',
+            domains: activeDomains,
             legalRefTable: legalRefList,
             rawData: rawDataToProcess
           }),
@@ -412,26 +413,17 @@ export default function Home() {
   };
 
   const handleSingleTest = () => {
-    if (mainAppMode === 'PURE_NAME') {
-      if (!singlePureInput.trim()) {
-        showAlert('Masukkan nama perusahaan mentah terlebih dahulu!');
-        return;
-      }
-      processAI([{ raw_val: singlePureInput }]);
-      return;
-    }
-
-    const targetDomainId = activeDomains[0]?.id;
-    if (!singleInputs[targetDomainId]?.trim()) {
-      showAlert(`Masukkan nilai raw untuk ${activeDomains[0]?.name || 'Domain'} terlebih dahulu!`);
+    const isAnyFilled = activeDomains.some(d => singleInputs[d.id]?.trim());
+    if (!isAnyFilled) {
+      showAlert(`Masukkan nilai raw data untuk ${activeDomains.map(d => d.name).join(' / ')} terlebih dahulu!`);
       return;
     }
     processAI([{ values: { ...singleInputs } }]);
   };
 
   const handleBatchTest = () => {
-    if (mainAppMode === 'PURE_NAME') {
-      processAI(pureNameBatchList);
+    if (rawBatchList.length === 0) {
+      showAlert('List batch raw data masih kosong!');
       return;
     }
     processAI(rawBatchList);
@@ -956,43 +948,66 @@ export default function Home() {
 
                         {/* Card Details */}
                         <div className="space-y-2.5 text-xs">
-                          {/* Raw Input */}
-                          <div className="bg-gray-50 p-2.5 rounded border border-gray-200 space-y-1">
-                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
-                              🔴 Data Mentah Entitas (Raw Input):
-                            </span>
-                            <span className="font-mono font-semibold text-gray-900 block break-all">
-                              {row.original || '-'}
-                            </span>
-                          </div>
+                          {activeDomains
+                            .filter(d => {
+                              const orig = row.domain_cleansed?.[d.id]?.original || (d.id === activeDomains[0]?.id ? row.original : '');
+                              return orig && orig !== '-';
+                            })
+                            .map((d) => {
+                              const domainData = row.domain_cleansed?.[d.id] || {
+                                original: row.original,
+                                cleansed_pure_name: row.cleansed_pure_name,
+                                stripped_noise: row.stripped_noise
+                              };
+                              return (
+                                <div key={d.id} className="space-y-2 p-2.5 bg-gray-50/70 rounded-lg border border-gray-200">
+                                  {activeDomains.length > 1 && (
+                                    <div className="text-[11px] font-bold text-gray-700 uppercase tracking-wider border-b border-gray-200 pb-1">
+                                      Domain: {d.name}
+                                    </div>
+                                  )}
+                                  {/* Raw Input */}
+                                  <div className="space-y-0.5">
+                                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
+                                      🔴 Data Mentah (Raw Input):
+                                    </span>
+                                    <span className="font-mono font-semibold text-gray-900 block break-all">
+                                      {domainData.original || '-'}
+                                    </span>
+                                  </div>
 
-                          {/* Stripped Legal Noise */}
-                          <div className="bg-amber-50/50 p-2.5 rounded border border-amber-200 space-y-1">
-                            <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">
-                              🔸 Bentuk Hukum Tereliminasi (Legal Noise):
-                            </span>
-                            <div className="flex flex-wrap gap-1 pt-0.5">
-                              {Array.isArray(row.stripped_noise) && row.stripped_noise.length > 0 ? (
-                                row.stripped_noise.map((noise: string, nIdx: number) => (
-                                  <span key={nIdx} className="px-2 py-0.5 bg-amber-100 text-amber-900 rounded font-mono text-[10px] font-bold border border-amber-300">
-                                    {noise}
-                                  </span>
-                                ))
-                              ) : (
-                                <span className="text-gray-400 italic text-[11px]">Tidak ada embel-embel</span>
-                              )}
-                            </div>
-                          </div>
+                                  {/* Stripped Legal Noise */}
+                                  <div className="space-y-0.5">
+                                    <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">
+                                      🔸 Bentuk Hukum Tereliminasi:
+                                    </span>
+                                    <div className="flex flex-wrap gap-1 pt-0.5">
+                                      {Array.isArray(domainData.stripped_noise) && domainData.stripped_noise.length > 0 ? (
+                                        domainData.stripped_noise.map((noise: string, nIdx: number) => (
+                                          <span key={nIdx} className="px-2 py-0.5 bg-amber-100 text-amber-900 rounded font-mono text-[10px] font-bold border border-amber-300">
+                                            {noise}
+                                          </span>
+                                        ))
+                                      ) : (
+                                        <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-semibold text-[11px]">
+                                          Sesuai Standar (Tanpa Legal Noise)
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
 
-                          {/* Cleansed Core Name */}
-                          <div className="bg-emerald-50 p-2.5 rounded border border-emerald-200 space-y-1">
-                            <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">
-                              🟢 Nama Utama Entitas Baku (Core Entity Name):
-                            </span>
-                            <span className="font-bold text-emerald-950 font-sans text-sm block">
-                              {row.cleansed_pure_name || '-'}
-                            </span>
-                          </div>
+                                  {/* Cleansed Core Name */}
+                                  <div className="space-y-0.5">
+                                    <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">
+                                      🟢 Nama Utama Entitas Baku (Core Entity Name):
+                                    </span>
+                                    <span className="font-bold text-emerald-950 font-sans text-xs sm:text-sm block">
+                                      {domainData.cleansed_pure_name || '-'}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
                         </div>
                       </div>
                     ))}
@@ -1010,36 +1025,79 @@ export default function Home() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200 bg-white">
-                        {results.map((row, idx) => (
-                          <tr key={idx} className="hover:bg-emerald-50/20 transition-colors">
-                            <td className="px-4 py-3 font-mono font-semibold text-gray-900 bg-gray-50/50">
-                              {row.original || '-'}
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex flex-wrap gap-1">
-                                {Array.isArray(row.stripped_noise) && row.stripped_noise.length > 0 ? (
-                                  row.stripped_noise.map((noise: string, nIdx: number) => (
-                                    <span key={nIdx} className="px-2 py-0.5 bg-amber-100 text-amber-900 rounded font-mono text-[10px] font-bold border border-amber-300">
-                                      {noise}
-                                    </span>
-                                  ))
-                                ) : (
-                                  <span className="text-gray-400 italic text-[11px]">Tidak ada embel-embel</span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className="inline-block px-3 py-1 bg-emerald-100 text-emerald-950 font-bold font-sans text-sm rounded border border-emerald-300 shadow-2xs">
-                                {row.cleansed_pure_name || '-'}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-center align-middle whitespace-nowrap">
-                              <span className="px-2.5 py-1 rounded text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                                CLEANSED 100%
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
+                        {results.map((row, idx) => {
+                          const validDomains = activeDomains.filter(d => {
+                            const orig = row.domain_cleansed?.[d.id]?.original || (d.id === activeDomains[0]?.id ? row.original : '');
+                            return orig && orig !== '-';
+                          });
+                          const displayDomains = validDomains.length > 0 ? validDomains : [activeDomains[0]];
+
+                          return (
+                            <tr key={idx} className="hover:bg-emerald-50/20 transition-colors">
+                              {/* RAW INPUT */}
+                              <td className="px-4 py-3 font-mono font-semibold text-gray-900 bg-gray-50/50 align-top">
+                                <div className="space-y-2">
+                                  {displayDomains.map((d) => (
+                                    <div key={d.id} className="flex flex-col">
+                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">{d.name} Raw:</span>
+                                      <span className="font-mono text-gray-900 font-semibold break-all text-[11px]">
+                                        {row.domain_cleansed?.[d.id]?.original || row.original || '-'}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </td>
+
+                              {/* LEGAL SUFFIX/PREFIX STRIPPED */}
+                              <td className="px-4 py-3 align-top">
+                                <div className="space-y-2">
+                                  {displayDomains.map((d) => {
+                                    const noiseArr = row.domain_cleansed?.[d.id]?.stripped_noise || row.stripped_noise || [];
+                                    return (
+                                      <div key={d.id} className="flex flex-col">
+                                        <span className="text-[10px] font-bold text-amber-700/70 uppercase tracking-tight">{d.name}:</span>
+                                        <div className="flex flex-wrap gap-1 mt-0.5">
+                                          {Array.isArray(noiseArr) && noiseArr.length > 0 ? (
+                                            noiseArr.map((noise: string, nIdx: number) => (
+                                              <span key={nIdx} className="px-2 py-0.5 bg-amber-100 text-amber-900 rounded font-mono text-[10px] font-bold border border-amber-300">
+                                                {noise}
+                                              </span>
+                                            ))
+                                          ) : (
+                                            <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-semibold text-[10px]">
+                                              Sesuai Standar (Tanpa Legal Noise)
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </td>
+
+                              {/* CORE ENTITY NAME */}
+                              <td className="px-4 py-3 align-top">
+                                <div className="space-y-2">
+                                  {displayDomains.map((d) => (
+                                    <div key={d.id} className="flex flex-col">
+                                      <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-tight">{d.name} Baku:</span>
+                                      <span className="inline-block mt-0.5 px-3 py-1 bg-emerald-100 text-emerald-950 font-bold font-sans text-xs sm:text-sm rounded border border-emerald-300 shadow-2xs">
+                                        {row.domain_cleansed?.[d.id]?.cleansed_pure_name || row.cleansed_pure_name || '-'}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </td>
+
+                              {/* STATUS */}
+                              <td className="px-4 py-3 text-center align-middle whitespace-nowrap">
+                                <span className="px-2.5 py-1 rounded text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                  CLEANSED 100%
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
