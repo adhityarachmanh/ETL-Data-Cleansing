@@ -64,17 +64,22 @@ export async function POST(req: NextRequest) {
     const aiResultText = response.text;
     const aiResultJson = JSON.parse(aiResultText || '[]');
 
-    // 4. Proses Hasil & Tambahkan Status Cleansing
+    // 4. Proses Hasil & Tambahkan Status Cleansing (Sesuai Skema Tabel ai.AI_CLEANSING_RESULT & dq.DQ_ISSUE_DETAIL)
     const finalResults = aiResultJson.map((res: any) => {
       const rawItem = cleanedRaw.find((r: any) => r.index === res.raw_index);
       const masterItem = masterList.find((m: any) => m.index === res.matched_master_index);
+      const status = decideStatus(res.confidence_score);
       
       return {
+        field_name: 'customer_name',
         original_value: rawItem?.original_name,
         cleansed_value: rawItem?.cleansed_name,
         suggested_master: masterItem ? masterItem.master_name : 'TIDAK DITEMUKAN',
         confidence_score: res.confidence_score,
-        ai_status: decideStatus(res.confidence_score),
+        ai_method: 'GEMINI_3.6_FLASH_FUZZY',
+        ai_status: status,
+        severity: status === 'NO_MATCH' ? 'High' : (status === 'REVIEW' ? 'Medium' : 'Low'),
+        stewardship_status: status === 'AUTO_APPROVE' ? 'APPROVED' : 'OPEN',
       };
     });
 
