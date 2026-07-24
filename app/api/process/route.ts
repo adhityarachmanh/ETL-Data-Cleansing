@@ -15,7 +15,7 @@ function normalizeText(value: string): string {
     return text.replace(/\s+/g, ' ').trim();
 }
 
-// Fungsi Threshold Keputusan Dinamis Berdasarkan Parameter User / Pak Zoel
+// Fungsi Threshold Keputusan Dinamis Berdasarkan Parameter User
 function decideStatus(scores: number[], autoApproveMin: number = 90, stewardReviewMin: number = 75): string {
     if (scores.length === 0) return 'NO_MATCH';
     const avg = scores.reduce((a, b) => a + b, 0) / scores.length;

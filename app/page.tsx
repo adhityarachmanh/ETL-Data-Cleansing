@@ -101,7 +101,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<any[]>([]);
 
-  // State Dynamic Threshold Sensitivity (Sesuai Arahan Pak Zoel)
+  // State Dynamic Threshold Sensitivity
   const [autoApproveThreshold, setAutoApproveThreshold] = useState<number>(90);
   const [stewardReviewThreshold, setStewardReviewThreshold] = useState<number>(75);
 
@@ -337,7 +337,7 @@ export default function Home() {
     return scores.reduce((a, b) => a + b, 0) / scores.length;
   };
 
-  // Helper Cek Apakah Record Termasuk Clean / Match Terpenuhi (Threshold Dinamis Pak Zoel)
+  // Helper Cek Apakah Record Termasuk Clean / Match Terpenuhi (Threshold Dinamis)
   const isRecordClean = (row: any) => {
     const avgScore = getRowAverageScore(row);
     return row.ai_status === 'AUTO_APPROVE' || avgScore >= autoApproveThreshold;
@@ -386,7 +386,7 @@ export default function Home() {
           </p>
         </header>
 
-        {/* PAK ZOEL FEATURE 1: MODE PILIH DOMAIN & THRESHOLD DINAMIS */}
+        {/* MODE PILIH DOMAIN & THRESHOLD DINAMIS */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           
           {/* Domain Tab Selector */}
@@ -434,12 +434,12 @@ export default function Home() {
             </div>
           </div>
 
-          {/* PAK ZOEL FEATURE 2: AMBANG BATAS (THRESHOLD) DINAMIS */}
+          {/* AMBANG BATAS (THRESHOLD) DINAMIS */}
           <div className="bg-white p-4 rounded-lg border border-gray-300 space-y-3 shadow-xs border-l-4 border-l-amber-500">
             <div className="border-b border-gray-200 pb-2">
               <h2 className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center justify-between">
                 <span>⚙️ Level Threshold AI</span>
-                <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Dinamis Pak Zoel</span>
+                <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Sensitivitas AI</span>
               </h2>
               <p className="text-[11px] text-gray-500">Atur batas persentase kemiripan untuk trigger Steward Review.</p>
             </div>
