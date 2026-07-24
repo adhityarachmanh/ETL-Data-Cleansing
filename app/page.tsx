@@ -2,216 +2,279 @@
 'use client';
 import { useState } from 'react';
 
-// Data Default Golden Reference Master (SSOT) - Domain 1: Nama Entitas
-const INITIAL_MASTER = [
-  { customer_name_standard: "PLN" },
-  { customer_name_standard: "TELKOM INDONESIA" },
-  { customer_name_standard: "PERTAMINA" },
-  { customer_name_standard: "BANK MANDIRI" },
-  { customer_name_standard: "KRAKATAU STEEL" }
-];
-
-// Data Default Golden Reference Master (SSOT) - Domain 2: Sektor
-const INITIAL_SECTOR = [
-  { sector_name_standard: "ENERGI" },
-  { sector_name_standard: "TELEKOMUNIKASI" },
-  { sector_name_standard: "MIGAS" },
-  { sector_name_standard: "PERBANKAN" },
-  { sector_name_standard: "MANUFAKTUR" }
-];
-
-// Data Default Raw Contoh untuk Simulasi Batch (Multi-Domain)
-const INITIAL_RAW_BATCH = [
-  { customer_name_raw: "PT. PLN (Persero) Tbk", sector_raw: "Listrik & Energi" },
-  { customer_name_raw: "PT TELKOM INDO", sector_raw: "Telco" },
-  { customer_name_raw: "PERTAMINA, PT PERSERO", sector_raw: "Minyak Bumi" },
-  { customer_name_raw: "MANDIRI BANK PT", sector_raw: "Keuangan" },
-  { customer_name_raw: "PT WARUNG SEJAHTERA", sector_raw: "Ritel Dagang" } // Contoh anomali
-];
-
-// Tipe state untuk Modal Edit
-type EditModalState = {
-  isOpen: boolean;
-  type: 'MASTER_NAME' | 'MASTER_SECTOR' | 'RAW_BATCH' | null;
-  index: number;
-  val1: string;
-  val2: string;
-  error: string;
+// Tipe Data Domain Referensi
+type Domain = {
+  id: string;
+  name: string;
+  items: string[];
 };
 
+// Data Default Awal
+const INITIAL_DOMAINS: Domain[] = [
+  {
+    id: 'customer_name',
+    name: 'Nama Entitas / Debitur',
+    items: ["PLN", "TELKOM INDONESIA", "PERTAMINA", "BANK MANDIRI", "KRAKATAU STEEL"]
+  },
+  {
+    id: 'sector',
+    name: 'Sektor Usaha',
+    items: ["ENERGI", "TELEKOMUNIKASI", "MIGAS", "PERBANKAN", "MANUFAKTUR"]
+  }
+];
+
+const INITIAL_RAW_BATCH = [
+  {
+    values: {
+      customer_name: "PT. PLN (Persero) Tbk",
+      sector: "Listrik & Energi"
+    }
+  },
+  {
+    values: {
+      customer_name: "PT TELKOM INDO",
+      sector: "Telco"
+    }
+  },
+  {
+    values: {
+      customer_name: "PERTAMINA, PT PERSERO",
+      sector: "Minyak Bumi"
+    }
+  },
+  {
+    values: {
+      customer_name: "MANDIRI BANK PT",
+      sector: "Keuangan"
+    }
+  },
+  {
+    values: {
+      customer_name: "PT WARUNG SEJAHTERA",
+      sector: "Ritel Dagang"
+    }
+  }
+];
+
 export default function Home() {
-  // State Master Data Referensi NAMA
-  const [masterList, setMasterList] = useState<any[]>([...INITIAL_MASTER]);
-  const [newMasterInput, setNewMasterInput] = useState('');
-  const [showMasterManager, setShowMasterManager] = useState(false);
+  // State Dynamic Domains
+  const [domains, setDomains] = useState<Domain[]>([...INITIAL_DOMAINS]);
+  const [activeDomainManager, setActiveDomainManager] = useState<string | null>(null);
+  const [newDomainInput, setNewDomainInput] = useState<{ [key: string]: string }>({});
 
-  // State Master Data Referensi SEKTOR
-  const [sectorList, setSectorList] = useState<any[]>([...INITIAL_SECTOR]);
-  const [newSectorInput, setNewSectorInput] = useState('');
-  const [showSectorManager, setShowSectorManager] = useState(false);
-
-  // State Batch Data Mentah 
+  // State Batch Data Mentah
   const [rawBatchList, setRawBatchList] = useState<any[]>([...INITIAL_RAW_BATCH]);
-  const [newRawName, setNewRawName] = useState('');
-  const [newRawSector, setNewRawSector] = useState('');
+  const [newRawInputs, setNewRawInputs] = useState<{ [key: string]: string }>({});
   const [showBatchManager, setShowBatchManager] = useState(false);
 
-  // State Input Single & Hasil AI
-  const [singleInputName, setSingleInputName] = useState('');
-  const [singleInputSector, setSingleInputSector] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<any[]>([]);
+  // State Single Input Test
+  const [singleInputs, setSingleInputs] = useState<{ [key: string]: string }>({});
 
-  // State Custom Modal Edit
-  const [editModal, setEditModal] = useState<EditModalState>({
+  // State Modal Warning / Error Alert UI
+  const [alertModal, setAlertModal] = useState<{ isOpen: boolean; title: string; message: string }>({
     isOpen: false,
-    type: null,
-    index: -1,
-    val1: '',
-    val2: '',
+    title: '',
+    message: ''
+  });
+
+  // State Modal Tambah Domain Baru
+  const [addDomainModal, setAddDomainModal] = useState<{ isOpen: boolean; name: string; error: string }>({
+    isOpen: false,
+    name: '',
     error: ''
   });
 
-  // --- FUNGSI PENGELOLA MASTER DATA NAMA ---
-  const handleAddMaster = () => {
-    if (!newMasterInput.trim()) return;
-    const cleanName = newMasterInput.trim().toUpperCase();
-    if (masterList.some(m => m.customer_name_standard === cleanName)) {
-      alert('Nama master entitas ini sudah ada!');
-      return;
-    }
-    setMasterList([...masterList, { customer_name_standard: cleanName }]);
-    setNewMasterInput('');
+  // State Modal Hapus Konfirmasi
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: (() => void) | null;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: null
+  });
+
+  // State Processing AI & Results
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<any[]>([]);
+
+  // State Custom Edit Modal
+  const [editModal, setEditModal] = useState<{
+    isOpen: boolean;
+    type: 'DOMAIN_ITEM' | 'RAW_ITEM' | null;
+    domainId?: string;
+    itemIndex: number;
+    values: { [key: string]: string };
+    error: string;
+  }>({
+    isOpen: false,
+    type: null,
+    itemIndex: -1,
+    values: {},
+    error: ''
+  });
+
+  // Helper untuk memicu Alert UI
+  const showAlert = (message: string, title: string = 'Pemberitahuan') => {
+    setAlertModal({ isOpen: true, title, message });
   };
 
-  const openEditMaster = (index: number) => {
-    setEditModal({
+  // --- TAMBAH / HAPUS DOMAIN MASTER CATEGORY ---
+  const handleAddNewDomainCategory = () => {
+    const domainName = addDomainModal.name.trim();
+    if (!domainName) {
+      setAddDomainModal(prev => ({ ...prev, error: 'Nama domain tidak boleh kosong!' }));
+      return;
+    }
+
+    const id = domainName.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    if (domains.some(d => d.id === id)) {
+      setAddDomainModal(prev => ({ ...prev, error: 'Domain ini sudah ada!' }));
+      return;
+    }
+
+    const newDomain: Domain = {
+      id,
+      name: domainName,
+      items: []
+    };
+
+    setDomains([...domains, newDomain]);
+    setAddDomainModal({ isOpen: false, name: '', error: '' });
+  };
+
+  const handleDeleteDomainCategory = (domainId: string) => {
+    if (domains.length <= 1) {
+      showAlert("Minimal harus ada 1 domain utama (Nama Entitas)!");
+      return;
+    }
+
+    const targetDomain = domains.find(d => d.id === domainId);
+    setConfirmModal({
       isOpen: true,
-      type: 'MASTER_NAME',
-      index,
-      val1: masterList[index].customer_name_standard,
-      val2: '',
-      error: ''
+      title: 'Hapus Domain Master',
+      message: `Yakin ingin menghapus seluruh Domain "${targetDomain?.name}"? Data referensi di dalamnya akan hilang.`,
+      onConfirm: () => {
+        setDomains(domains.filter(d => d.id !== domainId));
+        setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null });
+      }
     });
   };
 
-  const handleDeleteMaster = (indexToDelete: number) => {
-    setMasterList(masterList.filter((_, idx) => idx !== indexToDelete));
-  };
+  // --- MANAJEMEN ITEM MASTER DALAM DOMAIN ---
+  const handleAddItemToDomain = (domainId: string) => {
+    const text = newDomainInput[domainId]?.trim().toUpperCase();
+    if (!text) return;
 
-  const handleResetMaster = () => setMasterList([...INITIAL_MASTER]);
-  const handleClearMaster = () => setMasterList([]);
-
-  // --- FUNGSI PENGELOLA MASTER DATA SEKTOR ---
-  const handleAddSector = () => {
-    if (!newSectorInput.trim()) return;
-    const cleanSector = newSectorInput.trim().toUpperCase();
-    if (sectorList.some(s => s.sector_name_standard === cleanSector)) {
-      alert('Sektor referensi ini sudah ada!');
+    if (domains.find(d => d.id === domainId)?.items.includes(text)) {
+      showAlert("Item master ini sudah ada di dalam domain!");
       return;
     }
-    setSectorList([...sectorList, { sector_name_standard: cleanSector }]);
-    setNewSectorInput('');
+
+    setDomains(domains.map(d => {
+      if (d.id === domainId) {
+        return { ...d, items: [...d.items, text] };
+      }
+      return d;
+    }));
+
+    setNewDomainInput({ ...newDomainInput, [domainId]: '' });
   };
 
-  const openEditSector = (index: number) => {
-    setEditModal({
-      isOpen: true,
-      type: 'MASTER_SECTOR',
-      index,
-      val1: sectorList[index].sector_name_standard,
-      val2: '',
-      error: ''
-    });
+  const handleDeleteItemFromDomain = (domainId: string, index: number) => {
+    setDomains(domains.map(d => {
+      if (d.id === domainId) {
+        return { ...d, items: d.items.filter((_, i) => i !== index) };
+      }
+      return d;
+    }));
   };
 
-  const handleDeleteSector = (indexToDelete: number) => {
-    setSectorList(sectorList.filter((_, idx) => idx !== indexToDelete));
+  const handleResetDomains = () => setDomains([...INITIAL_DOMAINS]);
+  const handleClearDomainItems = (domainId: string) => {
+    setDomains(domains.map(d => d.id === domainId ? { ...d, items: [] } : d));
   };
 
-  const handleResetSector = () => setSectorList([...INITIAL_SECTOR]);
-  const handleClearSector = () => setSectorList([]);
-
-  // --- FUNGSI PENGELOLA BATCH DATA MENTAH ---
+  // --- MANAJEMEN RAW BATCH DATA ---
   const handleAddRawToBatch = () => {
-    if (!newRawName.trim()) return;
-    setRawBatchList([...rawBatchList, {
-      customer_name_raw: newRawName.trim(),
-      sector_raw: newRawSector.trim()
-    }]);
-    setNewRawName('');
-    setNewRawSector('');
+    const firstDomainId = domains[0]?.id;
+    if (!newRawInputs[firstDomainId]?.trim()) {
+      showAlert(`Minimal isi ${domains[0]?.name || 'Nama Raw'}!`);
+      return;
+    }
+
+    setRawBatchList([...rawBatchList, { values: { ...newRawInputs } }]);
+    setNewRawInputs({});
   };
 
-  const openEditRawBatch = (index: number) => {
-    setEditModal({
-      isOpen: true,
-      type: 'RAW_BATCH',
-      index,
-      val1: rawBatchList[index].customer_name_raw,
-      val2: rawBatchList[index].sector_raw || '',
-      error: ''
-    });
-  };
-
-  const handleDeleteRawFromBatch = (indexToDelete: number) => {
-    setRawBatchList(rawBatchList.filter((_, idx) => idx !== indexToDelete));
+  const handleDeleteRawFromBatch = (index: number) => {
+    setRawBatchList(rawBatchList.filter((_, idx) => idx !== index));
   };
 
   const handleResetBatch = () => setRawBatchList([...INITIAL_RAW_BATCH]);
   const handleClearBatch = () => setRawBatchList([]);
 
-
-  // --- FUNGSI SIMPAN CUSTOM MODAL ---
-  const handleSaveModal = () => {
-    const { type, index, val1, val2 } = editModal;
-
-    if (type === 'MASTER_NAME') {
-      const cleanName = val1.trim().toUpperCase();
-      if (!cleanName) return setEditModal({ ...editModal, error: 'Nama tidak boleh kosong!' });
-      if (masterList.some((m, idx) => m.customer_name_standard === cleanName && idx !== index)) {
-        return setEditModal({ ...editModal, error: 'Nama master entitas ini sudah ada!' });
-      }
-      const newList = [...masterList];
-      newList[index].customer_name_standard = cleanName;
-      setMasterList(newList);
-    }
-    else if (type === 'MASTER_SECTOR') {
-      const cleanSector = val1.trim().toUpperCase();
-      if (!cleanSector) return setEditModal({ ...editModal, error: 'Sektor tidak boleh kosong!' });
-      if (sectorList.some((s, idx) => s.sector_name_standard === cleanSector && idx !== index)) {
-        return setEditModal({ ...editModal, error: 'Sektor referensi ini sudah ada!' });
-      }
-      const newList = [...sectorList];
-      newList[index].sector_name_standard = cleanSector;
-      setSectorList(newList);
-    }
-    else if (type === 'RAW_BATCH') {
-      if (!val1.trim()) return setEditModal({ ...editModal, error: 'Nama raw entitas tidak boleh kosong!' });
-      const newList = [...rawBatchList];
-      newList[index] = {
-        customer_name_raw: val1.trim(),
-        sector_raw: val2.trim()
-      };
-      setRawBatchList(newList);
-    }
-
-    // Tutup modal jika berhasil
-    setEditModal({ isOpen: false, type: null, index: -1, val1: '', val2: '', error: '' });
+  // --- MODAL EDIT OPEN & SAVE ---
+  const openEditDomainItem = (domainId: string, itemIndex: number) => {
+    const domain = domains.find(d => d.id === domainId);
+    if (!domain) return;
+    setEditModal({
+      isOpen: true,
+      type: 'DOMAIN_ITEM',
+      domainId,
+      itemIndex,
+      values: { val: domain.items[itemIndex] },
+      error: ''
+    });
   };
 
-  // --- EXECUTE PROCESS AI ---
+  const openEditRawItem = (rawIndex: number) => {
+    const item = rawBatchList[rawIndex];
+    setEditModal({
+      isOpen: true,
+      type: 'RAW_ITEM',
+      itemIndex: rawIndex,
+      values: { ...item.values },
+      error: ''
+    });
+  };
+
+  const handleSaveModal = () => {
+    const { type, domainId, itemIndex, values } = editModal;
+
+    if (type === 'DOMAIN_ITEM' && domainId) {
+      const cleanVal = values.val?.trim().toUpperCase();
+      if (!cleanVal) return setEditModal({ ...editModal, error: 'Nilai tidak boleh kosong!' });
+
+      setDomains(domains.map(d => {
+        if (d.id === domainId) {
+          const newItems = [...d.items];
+          newItems[itemIndex] = cleanVal;
+          return { ...d, items: newItems };
+        }
+        return d;
+      }));
+    }
+    else if (type === 'RAW_ITEM') {
+      const firstDomainId = domains[0]?.id;
+      if (!values[firstDomainId]?.trim()) {
+        return setEditModal({ ...editModal, error: `${domains[0]?.name} tidak boleh kosong!` });
+      }
+      const newBatch = [...rawBatchList];
+      newBatch[itemIndex] = { values: { ...values } };
+      setRawBatchList(newBatch);
+    }
+
+    setEditModal({ isOpen: false, type: null, itemIndex: -1, values: {}, error: '' });
+  };
+
+  // --- PROCESS AI ---
   const processAI = async (rawDataToProcess: any[]) => {
-    if (masterList.length === 0) {
-      alert('Master Data Referensi Nama (SSOT) kosong! Harap tambahkan minimal 1 entitas master.');
-      return;
-    }
-    if (sectorList.length === 0) {
-      alert('Master Data Referensi Sektor (SSOT) kosong! Harap tambahkan minimal 1 sektor master.');
-      return;
-    }
-    if (rawDataToProcess.length === 0) {
-      alert('Data Batch Mentah kosong! Harap tambahkan minimal 1 data raw.');
+    if (domains.some(d => d.items.length === 0)) {
+      showAlert("Beberapa domain master Anda masih kosong. Harap isi minimal 1 item master di setiap domain!");
       return;
     }
 
@@ -221,8 +284,7 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          masterData: masterList,
-          sectorData: sectorList,
+          domains: domains,
           rawData: rawDataToProcess
         }),
       });
@@ -231,366 +293,277 @@ export default function Home() {
       if (resData.success) {
         setResults(resData.data);
       } else {
-        alert('Gagal memproses: ' + resData.error);
+        showAlert('Gagal memproses: ' + resData.error, 'API Error');
       }
     } catch (err) {
-      alert('Terjadi kesalahan jaringan saat memanggil Gemini API.');
+      showAlert('Terjadi kesalahan jaringan saat memanggil Gemini API.', 'Connection Error');
     }
     setLoading(false);
   };
 
   const handleSingleTest = () => {
-    if (!singleInputName.trim()) return;
-    processAI([{ customer_name_raw: singleInputName, sector_raw: singleInputSector }]);
+    const firstDomainId = domains[0]?.id;
+    if (!singleInputs[firstDomainId]?.trim()) return;
+    processAI([{ values: { ...singleInputs } }]);
   };
 
-  const handleBatchTest = () => {
-    processAI(rawBatchList);
+  const handleBatchTest = () => processAI(rawBatchList);
+
+  // Helper Menghitung Average Score per Record
+  const getRowAverageScore = (row: any) => {
+    if (!row.domain_matches) return 0;
+    const scores = domains.map(d => Number(row.domain_matches?.[d.id]?.confidence || 0));
+    if (scores.length === 0) return 0;
+    return scores.reduce((a, b) => a + b, 0) / scores.length;
   };
 
-  const getStatusBadge = (status: string) => {
-    if (status === 'AUTO_APPROVE') {
-      return (
-        <span className="px-2.5 py-1 rounded text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
-          AUTO APPROVE
-        </span>
-      );
+  // Helper Cek Apakah Record Termasuk Clean / Match Terpenuhi
+  const isRecordClean = (row: any) => {
+    const avgScore = getRowAverageScore(row);
+    // Dianggap Clean jika status AUTO_APPROVE atau rata-rata skor >= 80
+    return row.ai_status === 'AUTO_APPROVE' || avgScore >= 80;
+  };
+
+  const isRecordReview = (row: any) => {
+    const avgScore = getRowAverageScore(row);
+    return !isRecordClean(row) && (row.ai_status === 'REVIEW' || (avgScore >= 60 && avgScore < 80));
+  };
+
+  const getStatusBadge = (row: any) => {
+    if (isRecordClean(row)) {
+      return <span className="px-2.5 py-1 rounded text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">AUTO APPROVE</span>;
     }
-    if (status === 'REVIEW') {
-      return (
-        <span className="px-2.5 py-1 rounded text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">
-          STEWARD REVIEW
-        </span>
-      );
+    if (isRecordReview(row)) {
+      return <span className="px-2.5 py-1 rounded text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">STEWARD REVIEW</span>;
     }
-    return (
-      <span className="px-2.5 py-1 rounded text-xs font-semibold bg-red-100 text-red-800 border border-red-300">
-        NO MATCH (Anomali)
-      </span>
-    );
+    return <span className="px-2.5 py-1 rounded text-xs font-semibold bg-red-100 text-red-800 border border-red-300">NO MATCH</span>;
   };
 
-  // Hitung Metrik Ringkasan (Before vs After)
+  // --- PERHITUNGAN METRIK RINGKASAN ---
   const totalCount = results.length;
-  const autoApproveCount = results.filter(r => r.ai_status === 'AUTO_APPROVE').length;
-  const reviewCount = results.filter(r => r.ai_status === 'REVIEW').length;
+  const autoApproveCount = results.filter(r => isRecordClean(r)).length;
+  const reviewCount = results.filter(r => isRecordReview(r)).length;
   const cleanRate = totalCount > 0 ? Math.round((autoApproveCount / totalCount) * 100) : 0;
 
   return (
     <main className="min-h-screen p-4 sm:p-6 md:p-10 bg-gray-100 text-gray-900 font-sans relative">
-      <div className="max-w-6xl mx-auto space-y-6">
+      <div className="max-w-7xl mx-auto space-y-6">
 
-        {/* Header Flat Light */}
+        {/* Header */}
         <header className="bg-white p-5 sm:p-6 rounded-lg border border-gray-300 space-y-2">
-          <div className="text-xs font-bold text-blue-700 uppercase tracking-wider">
-            AI Data Quality & Cleansing Engine • SSOT Standard (Multi-Domain)
+          <div className="flex justify-between items-center flex-wrap gap-2">
+            <div className="text-xs font-bold text-blue-700 uppercase tracking-wider">
+              AI Data Quality Engine • Dynamic Multi-Domain SSOT
+            </div>
+            <span className="text-[11px] font-bold px-2.5 py-1 rounded border bg-purple-50 text-purple-700 border-purple-200">
+              {domains.length} Domain Aktif
+            </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-            Simulasi Data Cleansing (Before ➔ After)
+            Simulasi Data Cleansing Dinamis
           </h1>
           <p className="text-sm text-gray-600">
-            Mencocokkan data Nama Entitas & Sektor mentah berantakan (RAW) ke Master Data Referensi (SSOT) menggunakan Gemini AI.
+            Mencocokkan data mentah berantakan ke <strong className="text-gray-800">N-Domain Referensi Master</strong> yang dapat ditambah secara bebas.
           </p>
         </header>
 
-        {/* SECTION PENGELOLA SSOT MULTI-DOMAIN */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-
-          {/* 1. Kelola Master Data NAMA */}
-          <div className="bg-white p-4 sm:p-5 rounded-lg border border-gray-300 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-200 pb-3">
-              <div>
-                <h2 className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-                  Domain 1: SSOT Nama Entitas
-                </h2>
-              </div>
-              <div className="flex items-center gap-2 self-start sm:self-auto">
-                <button
-                  onClick={() => setShowMasterManager(!showMasterManager)}
-                  className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 text-xs font-semibold rounded transition"
-                >
-                  {showMasterManager ? 'Tutup' : '+ Kelola Master'}
-                </button>
-                <div className="flex gap-2 border-l border-gray-300 pl-2">
-                  <button
-                    onClick={handleResetMaster}
-                    className="text-xs text-gray-500 hover:text-gray-700 underline"
-                  >
-                    Reset Default
-                  </button>
-                  <button
-                    onClick={handleClearMaster}
-                    className="text-xs text-red-500 hover:text-red-700 underline"
-                  >
-                    Kosongkan
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {showMasterManager && (
-              <div className="bg-gray-50 p-3 sm:p-3.5 rounded border border-gray-200 space-y-2.5">
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <input
-                    type="text"
-                    value={newMasterInput}
-                    onChange={(e) => setNewMasterInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddMaster()}
-                    placeholder="Contoh: BANK BCA, KAI..."
-                    className="flex-1 px-3 py-2 bg-white border border-gray-300 rounded text-xs text-gray-900 focus:outline-none focus:border-blue-600"
-                  />
-                  <button
-                    onClick={handleAddMaster}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded transition w-full sm:w-auto whitespace-nowrap"
-                  >
-                    + Tambah
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div className="flex flex-wrap gap-2">
-              {masterList.length === 0 && <span className="text-xs text-gray-400 italic">Data kosong...</span>}
-              {masterList.map((m, i) => (
-                <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-900 rounded border border-blue-200 text-xs font-semibold group">
-                  <span className="text-blue-500 font-mono">#0{i + 1}</span>
-                  {m.customer_name_standard}
-                  {showMasterManager && (
-                    <div className="ml-1 flex items-center">
-                      <button
-                        onClick={() => openEditMaster(i)}
-                        className="text-blue-500 hover:text-blue-700 font-bold px-1 rounded hover:bg-blue-100 transition-colors"
-                        title="Edit"
-                      >
-                        ✎
-                      </button>
-                      <button
-                        onClick={() => handleDeleteMaster(i)}
-                        className="text-red-500 hover:text-red-700 font-bold px-1 rounded hover:bg-red-50 transition-colors"
-                        title="Hapus"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  )}
-                </span>
-              ))}
-            </div>
+        {/* TOP BAR: KELOLA DOMAIN DINAMIS */}
+        <div className="flex justify-between items-center bg-white p-4 rounded-lg border border-gray-300 flex-wrap gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-gray-800 uppercase tracking-wider">Pengelola Domain Referensi Master (SSOT)</h2>
+            <p className="text-xs text-gray-500">Tambah atau kelola domain data untuk dikomparasi oleh AI.</p>
           </div>
-
-          {/* 2. Kelola Master Data SEKTOR */}
-          <div className="bg-white p-4 sm:p-5 rounded-lg border border-gray-300 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-200 pb-3">
-              <div>
-                <h2 className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-                  Domain 2: SSOT Referensi Sektor
-                </h2>
-              </div>
-              <div className="flex items-center gap-2 self-start sm:self-auto">
-                <button
-                  onClick={() => setShowSectorManager(!showSectorManager)}
-                  className="px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 text-xs font-semibold rounded transition"
-                >
-                  {showSectorManager ? 'Tutup' : '+ Kelola Sektor'}
-                </button>
-                <div className="flex gap-2 border-l border-gray-300 pl-2">
-                  <button
-                    onClick={handleResetSector}
-                    className="text-xs text-gray-500 hover:text-gray-700 underline"
-                  >
-                    Reset Default
-                  </button>
-                  <button
-                    onClick={handleClearSector}
-                    className="text-xs text-red-500 hover:text-red-700 underline"
-                  >
-                    Kosongkan
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {showSectorManager && (
-              <div className="bg-gray-50 p-3 sm:p-3.5 rounded border border-gray-200 space-y-2.5">
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <input
-                    type="text"
-                    value={newSectorInput}
-                    onChange={(e) => setNewSectorInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddSector()}
-                    placeholder="Contoh: PERTAMBANGAN, RITEL..."
-                    className="flex-1 px-3 py-2 bg-white border border-gray-300 rounded text-xs text-gray-900 focus:outline-none focus:border-emerald-600"
-                  />
-                  <button
-                    onClick={handleAddSector}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded transition w-full sm:w-auto whitespace-nowrap"
-                  >
-                    + Tambah
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div className="flex flex-wrap gap-2">
-              {sectorList.length === 0 && <span className="text-xs text-gray-400 italic">Data kosong...</span>}
-              {sectorList.map((s, i) => (
-                <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-900 rounded border border-emerald-200 text-xs font-semibold group">
-                  {s.sector_name_standard}
-                  {showSectorManager && (
-                    <div className="ml-1 flex items-center">
-                      <button
-                        onClick={() => openEditSector(i)}
-                        className="text-emerald-600 hover:text-emerald-800 font-bold px-1 rounded hover:bg-emerald-100 transition-colors"
-                        title="Edit"
-                      >
-                        ✎
-                      </button>
-                      <button
-                        onClick={() => handleDeleteSector(i)}
-                        className="text-red-500 hover:text-red-700 font-bold px-1 rounded hover:bg-red-50 transition-colors"
-                        title="Hapus"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  )}
-                </span>
-              ))}
-            </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleResetDomains}
+              className="px-3 py-1.5 text-xs text-gray-600 border border-gray-300 hover:bg-gray-50 rounded font-medium"
+            >
+              Reset Default Domain
+            </button>
+            <button
+              onClick={() => setAddDomainModal({ isOpen: true, name: '', error: '' })}
+              className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded shadow-sm transition"
+            >
+              + Tambah Domain Baru
+            </button>
           </div>
-
         </div>
 
-        {/* Control Panel Grid: SINGLE & BATCH INPUT */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {/* GRID PENGELOLA SETIAP DOMAIN */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {domains.map((domain, domIdx) => (
+            <div key={domain.id} className="bg-white p-4 rounded-lg border border-gray-300 space-y-3 flex flex-col justify-between">
+              <div>
+                <div className="flex justify-between items-center border-b border-gray-200 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono font-bold px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded">
+                      #0{domIdx + 1}
+                    </span>
+                    <h3 className="text-xs font-bold text-gray-800 uppercase truncate max-w-[150px]">
+                      {domain.name}
+                    </h3>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setActiveDomainManager(activeDomainManager === domain.id ? null : domain.id)}
+                      className="px-2 py-1 text-[11px] bg-gray-100 hover:bg-gray-200 text-gray-700 rounded font-medium"
+                    >
+                      {activeDomainManager === domain.id ? 'Tutup' : 'Kelola'}
+                    </button>
+                    {domIdx > 0 && (
+                      <button
+                        onClick={() => handleDeleteDomainCategory(domain.id)}
+                        className="text-red-500 hover:text-red-700 font-bold px-1.5 py-0.5 hover:bg-red-50 rounded text-xs"
+                        title="Hapus Domain ini"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                </div>
 
-          {/* Opsi 1: Test Ketik Single */}
-          <div className="bg-white p-4 sm:p-5 rounded-lg border border-gray-300 space-y-4 flex flex-col justify-between">
-            <div>
-              <h2 className="font-bold text-base text-gray-900">
-                1. Uji Coba Single Input
-              </h2>
-              <p className="text-xs text-gray-600 mt-1">
-                Ketik data mentah (RAW) secara manual.
-              </p>
+                {/* Form Tambah Item Ke Domain */}
+                {activeDomainManager === domain.id && (
+                  <div className="mt-3 bg-gray-50 p-2.5 rounded border border-gray-200 space-y-2">
+                    <div className="flex gap-1.5">
+                      <input
+                        type="text"
+                        value={newDomainInput[domain.id] || ''}
+                        onChange={(e) => setNewDomainInput({ ...newDomainInput, [domain.id]: e.target.value })}
+                        onKeyDown={(e) => e.key === 'Enter' && handleAddItemToDomain(domain.id)}
+                        placeholder={`Tambah ke ${domain.name}...`}
+                        className="flex-1 px-2.5 py-1 bg-white border border-gray-300 rounded text-xs focus:outline-none focus:border-blue-600"
+                      />
+                      <button
+                        onClick={() => handleAddItemToDomain(domain.id)}
+                        className="px-2.5 py-1 bg-blue-600 text-white text-xs font-bold rounded"
+                      >
+                        +
+                      </button>
+                    </div>
+                    <div className="flex justify-end gap-2 pt-1 border-t border-gray-200">
+                      <button onClick={() => handleClearDomainItems(domain.id)} className="text-[10px] text-red-500 underline">
+                        Kosongkan Item
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* List Badges Item Domain */}
+                <div className="flex flex-wrap gap-1.5 mt-3">
+                  {domain.items.length === 0 && <span className="text-xs text-gray-400 italic">Belum ada item referensi...</span>}
+                  {domain.items.map((item, itemIdx) => (
+                    <span key={itemIdx} className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-900 border border-blue-200 rounded text-xs font-semibold">
+                      {item}
+                      {activeDomainManager === domain.id && (
+                        <span className="flex gap-0.5 ml-1">
+                          <button onClick={() => openEditDomainItem(domain.id, itemIdx)} className="text-blue-600 hover:text-blue-800 text-[10px]">✎</button>
+                          <button onClick={() => handleDeleteItemFromDomain(domain.id, itemIdx)} className="text-red-500 hover:text-red-700 text-[10px]">✕</button>
+                        </span>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="text-[11px] text-gray-400 font-mono text-right pt-2 border-t border-gray-100">
+                Total: {domain.items.length} Master Item
+              </div>
             </div>
-            <div className="space-y-3 pt-2">
-              <input
-                type="text"
-                value={singleInputName}
-                onChange={(e) => setSingleInputName(e.target.value)}
-                placeholder="Nama raw entitas (Contoh: PT. PLN Persero)"
-                className="w-full px-3 py-2 bg-white border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
-              />
-              <input
-                type="text"
-                value={singleInputSector}
-                onChange={(e) => setSingleInputSector(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSingleTest()}
-                placeholder="Sektor raw (Contoh: Listrik)"
-                className="w-full px-3 py-2 bg-white border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
-              />
+          ))}
+        </div>
+
+        {/* INPUT PANELS (SINGLE & BATCH) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2">
+
+          {/* Single Input */}
+          <div className="bg-white p-5 rounded-lg border border-gray-300 space-y-4 flex flex-col justify-between">
+            <div>
+              <h2 className="font-bold text-base text-gray-900">1. Uji Coba Single Input</h2>
+              <p className="text-xs text-gray-600 mt-0.5">Masukkan data mentah sesuai domain yang tersedia.</p>
+            </div>
+            <div className="space-y-2.5 pt-2">
+              {domains.map((d) => (
+                <div key={d.id}>
+                  <label className="text-[11px] font-bold text-gray-600 uppercase block mb-1">{d.name} Raw:</label>
+                  <input
+                    type="text"
+                    value={singleInputs[d.id] || ''}
+                    onChange={(e) => setSingleInputs({ ...singleInputs, [d.id]: e.target.value })}
+                    placeholder={`Masukkan ${d.name}...`}
+                    className="w-full px-3 py-1.5 bg-white border border-gray-300 rounded text-xs focus:outline-none focus:border-blue-600"
+                  />
+                </div>
+              ))}
               <button
                 onClick={handleSingleTest}
-                disabled={loading || !singleInputName.trim()}
-                className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-medium rounded text-sm transition"
+                disabled={loading}
+                className="w-full py-2.5 mt-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-medium rounded text-sm transition"
               >
-                {loading ? 'Memproses...' : 'Uji Cleansing Data Ini ➔'}
+                {loading ? 'Memproses AI...' : 'Uji Cleansing Data Ini ➔'}
               </button>
             </div>
           </div>
 
-          {/* Opsi 2: Simulasi Batch (Interactive) */}
-          <div className="bg-white p-4 sm:p-5 rounded-lg border border-gray-300 space-y-4 flex flex-col justify-between">
+          {/* Batch Input */}
+          <div className="bg-white p-5 rounded-lg border border-gray-300 space-y-4 flex flex-col justify-between">
             <div>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                <h2 className="font-bold text-base text-gray-900">
-                  2. Simulasi Batch ({rawBatchList.length} Data)
-                </h2>
-                <div className="flex items-center gap-1.5 self-start sm:self-auto">
-                  <button
-                    onClick={() => setShowBatchManager(!showBatchManager)}
-                    className="text-xs text-blue-700 hover:underline font-medium"
-                  >
-                    {showBatchManager ? 'Tutup Pengelola' : '+ Edit List Batch'}
+              <div className="flex justify-between items-center">
+                <h2 className="font-bold text-base text-gray-900">2. Simulasi Batch ({rawBatchList.length} Data)</h2>
+                <div className="flex gap-2">
+                  <button onClick={() => setShowBatchManager(!showBatchManager)} className="text-xs text-blue-700 hover:underline">
+                    {showBatchManager ? 'Tutup Pengelola' : '+ Edit Batch'}
                   </button>
-                  <div className="flex gap-2 border-l border-gray-300 pl-2">
-                    <button
-                      onClick={handleResetBatch}
-                      className="text-xs text-gray-500 hover:text-gray-700 underline"
-                    >
-                      Reset Default
-                    </button>
-                    <button
-                      onClick={handleClearBatch}
-                      className="text-xs text-red-500 hover:text-red-700 underline"
-                    >
-                      Kosongkan
-                    </button>
-                  </div>
+                  <button onClick={handleResetBatch} className="text-xs text-gray-500 underline">Reset</button>
+                  <button onClick={handleClearBatch} className="text-xs text-red-500 underline">Kosongkan</button>
                 </div>
               </div>
             </div>
 
-            {/* Form Tambah Item Batch */}
+            {/* Form Edit/Tambah Batch Raw Item */}
             {showBatchManager && (
               <div className="bg-gray-50 p-3 rounded border border-gray-200 space-y-2">
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <input
-                    type="text"
-                    value={newRawName}
-                    onChange={(e) => setNewRawName(e.target.value)}
-                    placeholder="Nama raw..."
-                    className="flex-1 px-2.5 py-1.5 bg-white border border-gray-300 rounded text-xs text-gray-900 focus:outline-none focus:border-blue-600"
-                  />
-                  <input
-                    type="text"
-                    value={newRawSector}
-                    onChange={(e) => setNewRawSector(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddRawToBatch()}
-                    placeholder="Sektor raw..."
-                    className="flex-1 px-2.5 py-1.5 bg-white border border-gray-300 rounded text-xs text-gray-900 focus:outline-none focus:border-blue-600"
-                  />
-                  <button
-                    onClick={handleAddRawToBatch}
-                    className="px-3 py-1.5 bg-gray-800 hover:bg-gray-900 text-white text-xs font-bold rounded transition w-full sm:w-auto"
-                  >
-                    + Item
-                  </button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {domains.map(d => (
+                    <input
+                      key={d.id}
+                      type="text"
+                      value={newRawInputs[d.id] || ''}
+                      onChange={(e) => setNewRawInputs({ ...newRawInputs, [d.id]: e.target.value })}
+                      placeholder={`${d.name} raw...`}
+                      className="px-2.5 py-1.5 bg-white border border-gray-300 rounded text-xs"
+                    />
+                  ))}
                 </div>
+                <button onClick={handleAddRawToBatch} className="w-full py-1.5 bg-gray-800 text-white text-xs font-bold rounded">
+                  + Tambah ke List Batch
+                </button>
               </div>
             )}
 
             <div className="space-y-3 pt-1">
-              <div className="bg-gray-50 p-2.5 rounded border border-gray-200 text-xs text-gray-700 space-y-2 max-h-36 overflow-y-auto">
-                {rawBatchList.length === 0 && <div className="text-gray-400 italic py-1">Data batch kosong...</div>}
+              <div className="bg-gray-50 p-2.5 rounded border border-gray-200 text-xs space-y-2 max-h-48 overflow-y-auto">
+                {rawBatchList.length === 0 && <div className="text-gray-400 italic">Batch data kosong...</div>}
                 {rawBatchList.map((item, idx) => (
-                  <div key={idx} className="flex justify-between items-center border-b border-gray-200 pb-1.5 last:border-0 last:pb-0">
-                    <div className="truncate pr-2">
-                      <div className="font-bold text-gray-800">{item.customer_name_raw}</div>
-                      <div className="text-[10px] text-gray-500">Sektor: {item.sector_raw || '-'}</div>
+                  <div key={idx} className="flex justify-between items-center border-b border-gray-200 pb-1.5 last:border-0">
+                    <div className="space-y-0.5 truncate pr-2">
+                      <div className="font-bold text-gray-900">{item.values?.[domains[0]?.id]}</div>
+                      <div className="text-[10px] text-gray-500 flex flex-wrap gap-2">
+                        {domains.slice(1).map(d => (
+                          <span key={d.id}>{d.name}: <strong className="text-gray-700">{item.values?.[d.id] || '-'}</strong></span>
+                        ))}
+                      </div>
                     </div>
                     {showBatchManager && (
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          onClick={() => openEditRawBatch(idx)}
-                          className="text-gray-500 hover:text-gray-800 font-bold px-1.5 py-0.5 rounded hover:bg-gray-200 text-xs transition-colors"
-                          title="Edit"
-                        >
-                          ✎
-                        </button>
-                        <button
-                          onClick={() => handleDeleteRawFromBatch(idx)}
-                          className="text-red-500 hover:text-red-700 font-bold px-1.5 py-0.5 rounded hover:bg-red-50 text-xs transition-colors"
-                          title="Hapus"
-                        >
-                          ×
-                        </button>
+                      <div className="flex gap-1 shrink-0">
+                        <button onClick={() => openEditRawItem(idx)} className="text-gray-600 hover:bg-gray-200 font-bold px-1.5 py-0.5 rounded text-xs">✎</button>
+                        <button onClick={() => handleDeleteRawFromBatch(idx)} className="text-red-500 hover:bg-red-50 font-bold px-1.5 py-0.5 rounded text-xs">✕</button>
                       </div>
                     )}
                   </div>
                 ))}
               </div>
+
               <button
                 onClick={handleBatchTest}
                 disabled={loading || rawBatchList.length === 0}
@@ -603,14 +576,14 @@ export default function Home() {
 
         </div>
 
-        {/* METRIK RESULT / BEFORE vs AFTER DASHBOARD */}
+        {/* RESULTS TABEL AUDIT TRAIL */}
         {results.length > 0 && (
-          <div className="space-y-5">
+          <div className="space-y-5 pt-4">
 
             {/* KPI Cards Ringkasan */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
               <div className="bg-white p-4 rounded-lg border border-gray-300">
-                <div className="text-xs font-semibold text-gray-500">Total Raw (Before)</div>
+                <div className="text-xs font-semibold text-gray-500">Total Raw Processed</div>
                 <div className="text-xl font-bold text-gray-900 mt-1">{totalCount} Record</div>
               </div>
               <div className="bg-white p-4 rounded-lg border border-gray-300 border-l-4 border-l-emerald-500">
@@ -627,104 +600,108 @@ export default function Home() {
               </div>
             </div>
 
-            {/* TABEL SIMULASI BEFORE VS AFTER */}
-            <div className="bg-white rounded-lg border border-gray-300 overflow-hidden">
+            {/* Dynamic Results Table */}
+            <div className="bg-white rounded-lg border border-gray-300 overflow-hidden shadow-sm">
               <div className="p-4 bg-gray-50 border-b border-gray-300 flex justify-between items-center">
-                <h2 className="font-bold text-sm text-gray-900">
-                  Audit Trail Cleansing (Before ➔ After)
-                </h2>
+                <div>
+                  <h2 className="font-bold text-sm text-gray-900">
+                    Audit Trail Cleansing Multi-Domain
+                  </h2>
+                  <p className="text-[11px] text-gray-500">
+                    Hasil perbandingan Data Mentah (Before) vs Master Reference (After) per domain
+                  </p>
+                </div>
                 <button
                   onClick={() => setResults([])}
-                  className="px-3 py-1 bg-white border border-gray-300 text-gray-700 hover:bg-gray-100 text-xs font-medium rounded transition"
+                  className="px-3 py-1 bg-white border border-gray-300 hover:bg-gray-100 text-gray-700 text-xs font-medium rounded transition shadow-sm"
                 >
                   Clear Hasil
                 </button>
               </div>
 
-              {/* TAMPILAN MOBILE (< md) */}
-              <div className="block md:hidden divide-y divide-gray-200 p-3 space-y-4">
-                {results.map((row, idx) => (
-                  <div key={idx} className="bg-gray-50 p-3 rounded border border-gray-200 space-y-2 text-xs">
-                    <div className="flex justify-between items-center">
-                      <span className="font-bold text-gray-500 uppercase">RAW (BEFORE)</span>
-                      <span className="font-mono font-bold text-gray-700">Skor Nama: {row.confidence_score}%</span>
-                    </div>
-                    <div className="bg-white p-2 rounded border border-gray-300 break-all space-y-1">
-                      <div className="font-mono text-gray-900 font-semibold">{row.original_value}</div>
-                      <div className="text-[10px] text-gray-500 uppercase">Sektor: <span className="font-mono">{row.sector_raw}</span></div>
-                    </div>
-
-                    <div className="flex justify-between items-center pt-1">
-                      <span className="font-bold text-gray-500 uppercase">AFTER (SSOT MASTER)</span>
-                      <span className="font-mono font-bold text-emerald-700">Skor Sektor: {row.sector_confidence}%</span>
-                    </div>
-                    <div className="bg-white p-2 rounded border border-gray-300 space-y-1">
-                      <div className="font-bold text-gray-900">{row.suggested_master}</div>
-                      <div className="text-[10px] text-emerald-700 uppercase font-bold">Sektor: {row.sector_matched}</div>
-                    </div>
-
-                    <div className="pt-2 text-right">
-                      {getStatusBadge(row.ai_status)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* TAMPILAN DESKTOP (>= md) */}
-              <div className="hidden md:block overflow-x-auto">
-                <table className="w-full text-xs text-left min-w-[900px]">
-                  <thead className="bg-gray-50 text-gray-700 border-b border-gray-300 uppercase font-semibold">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left min-w-[850px] border-collapse">
+                  <thead className="bg-gray-100 text-gray-700 border-b border-gray-300 uppercase font-bold text-[11px] tracking-wider">
                     <tr>
-                      <th className="px-4 py-3 w-1/4">BEFORE (Raw Data)</th>
-                      <th className="px-4 py-3 w-1/4">AFTER (SSOT Golden Master)</th>
-                      <th className="px-4 py-3 text-center">CONFIDENCE NAMA</th>
-                      <th className="px-4 py-3 text-center">CONFIDENCE SEKTOR</th>
-                      <th className="px-4 py-3 text-center">STATUS AI</th>
+                      <th className="px-4 py-3.5 w-1/3">RAW DATA (BEFORE)</th>
+                      <th className="px-4 py-3.5 w-1/3">SSOT MATCHED (AFTER)</th>
+                      {domains.map((d) => (
+                        <th key={d.id} className="px-3 py-3.5 text-center whitespace-nowrap">
+                          {d.name} SCORE
+                        </th>
+                      ))}
+                      <th className="px-4 py-3.5 text-center">STATUS AI</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
+                  <tbody className="divide-y divide-gray-200 bg-white">
                     {results.map((row, idx) => (
-                      <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                      <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
                         {/* BEFORE */}
-                        <td className="px-4 py-3">
-                          <div className="font-mono text-gray-900 bg-gray-100 px-2 py-1 rounded border border-gray-200 font-semibold mb-1 inline-block">
-                            {row.original_value}
-                          </div>
-                          <div className="text-[10px] text-gray-500 uppercase">
-                            Sektor: <span className="font-mono">{row.sector_raw}</span>
+                        <td className="px-4 py-3 font-sans align-top">
+                          <div className="space-y-2">
+                            {domains.map((d) => (
+                              <div key={d.id} className="flex flex-col">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">
+                                  {d.name}
+                                </span>
+                                <span className="inline-block mt-0.5 font-mono text-gray-900 bg-gray-100 px-2 py-1 rounded border border-gray-200 font-semibold break-all text-[11px]">
+                                  {row.domain_matches?.[d.id]?.raw_val || '-'}
+                                </span>
+                              </div>
+                            ))}
                           </div>
                         </td>
 
                         {/* AFTER */}
-                        <td className="px-4 py-3">
-                          <div className="font-bold text-gray-900 mb-1 text-sm">
-                            {row.suggested_master}
-                          </div>
-                          <div className="text-[10px] text-emerald-700 uppercase font-bold">
-                            Sektor: {row.sector_matched}
+                        <td className="px-4 py-3 font-sans align-top">
+                          <div className="space-y-2">
+                            {domains.map((d) => {
+                              const matchedVal = row.domain_matches?.[d.id]?.matched_val;
+                              const isNotFound = matchedVal === 'TIDAK DITEMUKAN';
+                              return (
+                                <div key={d.id} className="flex flex-col">
+                                  <span className="text-[10px] font-bold text-emerald-700/70 uppercase tracking-tight">
+                                    {d.name} Standard
+                                  </span>
+                                  <span
+                                    className={`inline-block mt-0.5 px-2 py-1 rounded font-bold text-[11px] ${isNotFound
+                                        ? 'bg-red-50 text-red-600 border border-red-200 italic'
+                                        : 'bg-emerald-50 text-emerald-900 border border-emerald-200'
+                                      }`}
+                                  >
+                                    {matchedVal || '-'}
+                                  </span>
+                                </div>
+                              );
+                            })}
                           </div>
                         </td>
 
-                        {/* CONFIDENCE NAMA */}
-                        <td className="px-4 py-3 text-center font-mono font-bold text-gray-900">
-                          {row.confidence_score}%
-                        </td>
+                        {/* SCORES PER DOMAIN */}
+                        {domains.map((d) => {
+                          const score = Number(row.domain_matches?.[d.id]?.confidence || 0);
+                          let scoreColor = 'text-red-600 bg-red-50 border-red-200';
+                          if (score >= 80) scoreColor = 'text-emerald-700 bg-emerald-50 border-emerald-200';
+                          else if (score >= 60) scoreColor = 'text-amber-700 bg-amber-50 border-amber-200';
 
-                        {/* CONFIDENCE SEKTOR */}
-                        <td className="px-4 py-3 text-center font-mono font-bold text-emerald-700">
-                          {row.sector_confidence}%
-                        </td>
+                          return (
+                            <td key={d.id} className="px-3 py-3 text-center align-middle">
+                              <span className={`inline-block font-mono font-bold px-2.5 py-1 rounded border text-xs shadow-2xs ${scoreColor}`}>
+                                {score}%
+                              </span>
+                            </td>
+                          );
+                        })}
 
                         {/* STATUS */}
-                        <td className="px-4 py-3 text-center">
-                          {getStatusBadge(row.ai_status)}
+                        <td className="px-4 py-3 text-center align-middle whitespace-nowrap">
+                          {getStatusBadge(row)}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-
             </div>
 
           </div>
@@ -732,79 +709,134 @@ export default function Home() {
 
       </div>
 
-      {/* --- CUSTOM MODAL EDIT UI --- */}
+      {/* --- CUSTOM MODALS --- */}
       {editModal.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4  bg-opacity-60 backdrop-blur-sm transition-opacity">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 space-y-5 animate-in fade-in zoom-in-95 duration-200">
-
             <div className="flex justify-between items-center border-b border-gray-100 pb-3">
               <h3 className="text-lg font-bold text-gray-900">
-                {editModal.type === 'MASTER_NAME' && 'Edit Master Nama Entitas'}
-                {editModal.type === 'MASTER_SECTOR' && 'Edit Master Sektor'}
-                {editModal.type === 'RAW_BATCH' && 'Edit Data Mentah (Batch)'}
+                {editModal.type === 'DOMAIN_ITEM' ? 'Edit Item Master' : 'Edit Data Mentah Batch'}
               </h3>
-              <button
-                onClick={() => setEditModal({ ...editModal, isOpen: false, error: '' })}
-                className="text-gray-400 hover:text-gray-700 font-bold px-2 rounded hover:bg-gray-100"
-              >
-                ✕
-              </button>
+              <button onClick={() => setEditModal({ ...editModal, isOpen: false })} className="text-gray-400 hover:text-gray-700 font-bold px-2">✕</button>
             </div>
 
             {editModal.error && (
-              <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded-md font-semibold flex items-center gap-2">
-                <span className="text-red-500">⚠️</span> {editModal.error}
+              <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded-md font-semibold">
+                ⚠️ {editModal.error}
               </div>
             )}
 
-            <div className="space-y-4">
-              {/* Input Value 1 (Bisa Nama Master, Sektor Master, atau Nama Raw Batch) */}
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                  {editModal.type === 'RAW_BATCH' ? 'Nama Raw Entitas' : 'Nama Standar Referensi'}
-                </label>
-                <input
-                  type="text"
-                  value={editModal.val1}
-                  onChange={(e) => setEditModal({ ...editModal, val1: e.target.value, error: '' })}
-                  onKeyDown={(e) => e.key === 'Enter' && (editModal.type !== 'RAW_BATCH' ? handleSaveModal() : null)}
-                  className="w-full px-3.5 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                  autoFocus
-                />
-              </div>
-
-              {/* Input Value 2 (Hanya muncul jika yang diedit adalah Raw Batch Sektor) */}
-              {editModal.type === 'RAW_BATCH' && (
+            <div className="space-y-3">
+              {editModal.type === 'DOMAIN_ITEM' && (
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                    Sektor Raw
-                  </label>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Nilai Standar Master:</label>
                   <input
                     type="text"
-                    value={editModal.val2}
-                    onChange={(e) => setEditModal({ ...editModal, val2: e.target.value, error: '' })}
+                    value={editModal.values.val || ''}
+                    onChange={(e) => setEditModal({ ...editModal, values: { val: e.target.value } })}
                     onKeyDown={(e) => e.key === 'Enter' && handleSaveModal()}
-                    className="w-full px-3.5 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                    className="w-full px-3.5 py-2 border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    autoFocus
                   />
                 </div>
               )}
+
+              {editModal.type === 'RAW_ITEM' && domains.map(d => (
+                <div key={d.id}>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">{d.name} Raw:</label>
+                  <input
+                    type="text"
+                    value={editModal.values[d.id] || ''}
+                    onChange={(e) => setEditModal({
+                      ...editModal,
+                      values: { ...editModal.values, [d.id]: e.target.value }
+                    })}
+                    className="w-full px-3.5 py-2 border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
+              ))}
             </div>
 
-            <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-              <button
-                onClick={() => setEditModal({ ...editModal, isOpen: false, error: '' })}
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-md transition-colors"
-              >
+            <div className="flex justify-end gap-3 pt-3 border-t border-gray-100">
+              <button onClick={() => setEditModal({ ...editModal, isOpen: false })} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded">
                 Batal
               </button>
-              <button
-                onClick={handleSaveModal}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-md shadow-sm transition-colors"
-              >
+              <button onClick={handleSaveModal} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded">
                 Simpan Perubahan
               </button>
             </div>
+          </div>
+        </div>
+      )}
 
+      {addDomainModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+              <h3 className="text-lg font-bold text-gray-900">Tambah Domain Master Baru</h3>
+              <button onClick={() => setAddDomainModal({ isOpen: false, name: '', error: '' })} className="text-gray-400 hover:text-gray-700 font-bold px-2">✕</button>
+            </div>
+
+            {addDomainModal.error && (
+              <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded-md font-semibold">
+                ⚠️ {addDomainModal.error}
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">Nama Domain Category Baru:</label>
+              <input
+                type="text"
+                placeholder="Contoh: Wilayah / Lokasi, Jenis Debitur..."
+                value={addDomainModal.name}
+                onChange={(e) => setAddDomainModal({ ...addDomainModal, name: e.target.value, error: '' })}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddNewDomainCategory()}
+                className="w-full px-3.5 py-2 border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                autoFocus
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-3 border-t border-gray-100">
+              <button onClick={() => setAddDomainModal({ isOpen: false, name: '', error: '' })} className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-semibold rounded">
+                Batal
+              </button>
+              <button onClick={handleAddNewDomainCategory} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded">
+                Tambah Domain
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            <h3 className="text-lg font-bold text-gray-900">{confirmModal.title}</h3>
+            <p className="text-xs text-gray-600 leading-relaxed">{confirmModal.message}</p>
+            <div className="flex justify-end gap-3 pt-2">
+              <button onClick={() => setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null })} className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-semibold rounded">
+                Batal
+              </button>
+              <button onClick={() => confirmModal.onConfirm && confirmModal.onConfirm()} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded">
+                Ya, Hapus
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {alertModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-2 text-amber-600 font-bold text-base">
+              <span>⚠️</span> {alertModal.title}
+            </div>
+            <p className="text-xs text-gray-600 leading-relaxed">{alertModal.message}</p>
+            <div className="flex justify-end pt-2">
+              <button onClick={() => setAlertModal({ isOpen: false, title: '', message: '' })} className="px-4 py-2 bg-gray-800 text-white text-sm font-semibold rounded">
+                Mengerti
+              </button>
+            </div>
           </div>
         </div>
       )}
