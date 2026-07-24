@@ -104,7 +104,7 @@ Aturan:
             },
         });
 
-        const aiResultText = response.text;
+        const aiResultText = (response.text || '').replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
         const aiResultJson = JSON.parse(aiResultText || '[]');
 
         // 5. Olah Hasil & Susun Output Audit Trail Multi-Domain
