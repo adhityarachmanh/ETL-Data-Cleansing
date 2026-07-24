@@ -79,6 +79,7 @@ ${JSON.stringify(formattedRaw)}
 
 Tugas Anda:
 Cocokkan setiap item dari Raw Data ke SETIAP Domain Master di atas berdasarkan nilai di "raw_values".
+Selain itu, lakukan evaluasi konsistensi konteks antar-domain.
 
 Kembalikan HANYA array JSON dengan format persis seperti ini:
 [
@@ -88,14 +89,16 @@ Kembalikan HANYA array JSON dengan format persis seperti ini:
       ${formattedDomains
                 .map((d) => `"${d.domain_id}": { "matched_index": 0, "confidence": 95.0 }`)
                 .join(',\n      ')}
-    }
+    },
+    "warning_note": null
   }
 ]
 
-Aturan Skoring Confidence:
+Aturan Skoring & Anomali Kontradiksi:
 1. Exact / Full Standard Match (contoh: "PLN" -> "PLN", "PERTAMINA" -> "PERTAMINA"): berikan confidence >= 95.0.
-2. Partial / Fuzzy / Contain Match (contoh: "Kabupaten Badung, Bali" -> "BALI", "PT TELKOM INDO" -> "TELKOM INDONESIA"): berikan confidence antara 85.0 hingga 92.0 agar masuk Steward Review.
-3. Tidak Cocok / Berbeda Jauh (contoh: "Warung Sejahtera" ke "PLN"): isi "matched_index" dengan null dan berikan confidence < 50.0.
+2. Partial / Fuzzy / Contain Match (contoh: "Kabupaten Badung, Bali" -> "BALI"): berikan confidence antara 85.0 hingga 92.0 agar masuk Steward Review.
+3. Kontradiksi Lintas Domain (Cross-Domain Anomaly): Jika nama entitas mengindikasikan sektor tertentu (contoh: "PT Listrik Mandiri" / "PT Minyak Sejahtera") tetapi sektor yang dimasukkan tidak sesuai (contoh: "Pengairan" / "Ritel"), turunkan skor confidence sektor ke 80.0-88.0 dan sertakan penjelasan singkat pada "warning_note" (contoh: "Kontradiksi: Entitas berbasis Listrik tetapi sektor terisi Pengairan").
+4. Tidak Cocok / Berbeda Jauh: isi "matched_index" dengan null dan berikan confidence < 50.0.
 `;
 
         // 4. Panggil Gemini AI
@@ -149,6 +152,7 @@ Aturan Skoring Confidence:
                 ai_status: status,
                 severity: status === 'NO_MATCH' ? 'High' : status === 'REVIEW' ? 'Medium' : 'Low',
                 stewardship_status: status === 'AUTO_APPROVE' ? 'APPROVED' : 'OPEN',
+                warning_note: res.warning_note || null,
             };
         });
 

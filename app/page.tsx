@@ -44,6 +44,12 @@ const INITIAL_RAW_BATCH = [
   },
   {
     values: {
+      customer_name: "PT Listrik Mandiri",
+      sector: "Pengairan & Irigasi"
+    }
+  },
+  {
+    values: {
       customer_name: "MANDIRI BANK PT",
       sector: "Keuangan"
     }
@@ -762,6 +768,12 @@ export default function Home() {
                                 </span>
                               </div>
                             ))}
+                            {row.warning_note && (
+                              <div className="mt-2 p-2 bg-amber-50 border border-amber-300 text-amber-900 text-[11px] rounded font-medium flex items-start gap-1.5 leading-snug">
+                                <span className="shrink-0 text-amber-600 font-bold">⚠️ Anomali:</span>
+                                <span>{row.warning_note}</span>
+                              </div>
+                            )}
                           </div>
                         </td>
 
