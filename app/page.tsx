@@ -101,6 +101,10 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<any[]>([]);
 
+  // State Dynamic Threshold Sensitivity (Sesuai Arahan Pak Zoel)
+  const [autoApproveThreshold, setAutoApproveThreshold] = useState<number>(90);
+  const [stewardReviewThreshold, setStewardReviewThreshold] = useState<number>(75);
+
   // State Custom Edit Modal
   const [editModal, setEditModal] = useState<{
     isOpen: boolean;
@@ -294,7 +298,11 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           domains: activeDomains,
-          rawData: rawDataToProcess
+          rawData: rawDataToProcess,
+          thresholds: {
+            autoApprove: autoApproveThreshold,
+            stewardReview: stewardReviewThreshold
+          }
         }),
       });
 
@@ -329,16 +337,15 @@ export default function Home() {
     return scores.reduce((a, b) => a + b, 0) / scores.length;
   };
 
-  // Helper Cek Apakah Record Termasuk Clean / Match Terpenuhi
+  // Helper Cek Apakah Record Termasuk Clean / Match Terpenuhi (Threshold Dinamis Pak Zoel)
   const isRecordClean = (row: any) => {
     const avgScore = getRowAverageScore(row);
-    // Dianggap Clean jika status AUTO_APPROVE atau rata-rata skor >= 80
-    return row.ai_status === 'AUTO_APPROVE' || avgScore >= 80;
+    return row.ai_status === 'AUTO_APPROVE' || avgScore >= autoApproveThreshold;
   };
 
   const isRecordReview = (row: any) => {
     const avgScore = getRowAverageScore(row);
-    return !isRecordClean(row) && (row.ai_status === 'REVIEW' || (avgScore >= 60 && avgScore < 80));
+    return !isRecordClean(row) && (row.ai_status === 'REVIEW' || (avgScore >= stewardReviewThreshold && avgScore < autoApproveThreshold));
   };
 
   const getStatusBadge = (row: any) => {
@@ -375,51 +382,103 @@ export default function Home() {
             Simulasi AI Data Quality & Cleansing
           </h1>
           <p className="text-sm text-gray-600">
-            Mencocokkan data mentah berantakan ke <strong className="text-gray-800">Golden Reference Master Data</strong> secara independen per domain (Nama Debitur, Sektor Usaha, dll).
+            Mencocokkan data mentah berantakan ke <strong className="text-gray-800">Golden Reference Master Data</strong> secara independen per domain.
           </p>
         </header>
 
-        {/* PAK ZOEL FEATURE: MODE PILIH DOMAIN YANG INGIN DIUJI */}
-        <div className="bg-white p-4 rounded-lg border border-gray-300 space-y-3 shadow-xs">
-          <div className="flex items-center justify-between flex-wrap gap-2 border-b border-gray-200 pb-2.5">
+        {/* PAK ZOEL FEATURE 1: MODE PILIH DOMAIN & THRESHOLD DINAMIS */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          
+          {/* Domain Tab Selector */}
+          <div className="lg:col-span-2 bg-white p-4 rounded-lg border border-gray-300 space-y-3 shadow-xs flex flex-col justify-between">
             <div>
-              <h2 className="text-xs font-bold text-gray-800 uppercase tracking-wider">🎯 Pilih Domain Referensi yang Ingin Diuji:</h2>
-              <p className="text-xs text-gray-500">Pilih mau menguji Nama Debitur atau Sektor Usaha secara independen ke referensinya masing-masing.</p>
+              <div className="flex items-center justify-between flex-wrap gap-2 border-b border-gray-200 pb-2.5">
+                <div>
+                  <h2 className="text-xs font-bold text-gray-800 uppercase tracking-wider">🎯 Pilih Domain Referensi yang Ingin Diuji:</h2>
+                  <p className="text-xs text-gray-500">Pilih mau menguji Nama Debitur atau Sektor Usaha secara independen ke referensinya.</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 pt-3">
+                {domains.map((d) => (
+                  <button
+                    key={d.id}
+                    onClick={() => {
+                      setActiveDomainManager(d.id);
+                      setResults([]);
+                    }}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold border transition flex items-center gap-2 ${
+                      (activeDomainManager || domains[0]?.id) === d.id
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                        : 'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100'
+                    }`}
+                  >
+                    <span>{d.id === 'customer_name' ? '🏢' : d.id === 'sector' ? '🏭' : '📌'}</span>
+                    {d.name} ({d.items.length} Master)
+                  </button>
+                ))}
+                <button
+                  onClick={() => {
+                    setActiveDomainManager('ALL');
+                    setResults([]);
+                  }}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold border transition flex items-center gap-2 ${
+                    activeDomainManager === 'ALL'
+                      ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                      : 'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100'
+                  }`}
+                >
+                  <span>🌐</span>
+                  Semua Domain (Multi-Domain)
+                </button>
+              </div>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2 pt-1">
-            {domains.map((d) => (
-              <button
-                key={d.id}
-                onClick={() => {
-                  setActiveDomainManager(d.id);
-                  setResults([]);
-                }}
-                className={`px-4 py-2 rounded-lg text-xs font-bold border transition flex items-center gap-2 ${
-                  (activeDomainManager || domains[0]?.id) === d.id
-                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                    : 'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100'
-                }`}
-              >
-                <span>{d.id === 'customer_name' ? '🏢' : d.id === 'sector' ? '🏭' : '📌'}</span>
-                {d.name} ({d.items.length} Master)
-              </button>
-            ))}
-            <button
-              onClick={() => {
-                setActiveDomainManager('ALL');
-                setResults([]);
-              }}
-              className={`px-4 py-2 rounded-lg text-xs font-bold border transition flex items-center gap-2 ${
-                activeDomainManager === 'ALL'
-                  ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
-                  : 'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100'
-              }`}
-            >
-              <span>🌐</span>
-              Semua Domain (Multi-Domain)
-            </button>
+
+          {/* PAK ZOEL FEATURE 2: AMBANG BATAS (THRESHOLD) DINAMIS */}
+          <div className="bg-white p-4 rounded-lg border border-gray-300 space-y-3 shadow-xs border-l-4 border-l-amber-500">
+            <div className="border-b border-gray-200 pb-2">
+              <h2 className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center justify-between">
+                <span>⚙️ Level Threshold AI</span>
+                <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Dinamis Pak Zoel</span>
+              </h2>
+              <p className="text-[11px] text-gray-500">Atur batas persentase kemiripan untuk trigger Steward Review.</p>
+            </div>
+            
+            <div className="space-y-3 text-xs">
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="font-bold text-emerald-800">Auto-Approve Min Score:</label>
+                  <span className="font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">{autoApproveThreshold}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="80"
+                  max="98"
+                  value={autoApproveThreshold}
+                  onChange={(e) => setAutoApproveThreshold(Number(e.target.value))}
+                  className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                />
+                <div className="text-[10px] text-gray-400 mt-0.5">Skor ≥ {autoApproveThreshold}% otomatis masuk SSOT Clean.</div>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="font-bold text-amber-800">Steward Review Min Score:</label>
+                  <span className="font-mono font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">{stewardReviewThreshold}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="50"
+                  max="89"
+                  value={stewardReviewThreshold}
+                  onChange={(e) => setStewardReviewThreshold(Number(e.target.value))}
+                  className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-amber-600"
+                />
+                <div className="text-[10px] text-gray-400 mt-0.5">Skor {stewardReviewThreshold}% - {autoApproveThreshold - 1}% butuh persetujuan Data Steward.</div>
+              </div>
+            </div>
           </div>
+
         </div>
 
         {/* TOP BAR: KELOLA DOMAIN DINAMIS */}
@@ -571,7 +630,7 @@ export default function Home() {
             {showBatchManager && (
               <div className="bg-gray-50 p-3 rounded border border-gray-200 space-y-2">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {domains.map(d => (
+                  {activeDomains.map(d => (
                     <input
                       key={d.id}
                       type="text"
@@ -583,7 +642,7 @@ export default function Home() {
                   ))}
                 </div>
                 <button onClick={handleAddRawToBatch} className="w-full py-1.5 bg-gray-800 text-white text-xs font-bold rounded">
-                  + Tambah ke List Batch
+                  + Tambah ke List Batch ({activeDomains.map(d => d.name).join(', ')})
                 </button>
               </div>
             )}
@@ -795,7 +854,7 @@ export default function Home() {
                 </div>
               )}
 
-              {editModal.type === 'RAW_ITEM' && domains.map(d => (
+              {editModal.type === 'RAW_ITEM' && activeDomains.map(d => (
                 <div key={d.id}>
                   <label className="block text-xs font-bold text-gray-700 mb-1">{d.name} Raw:</label>
                   <input

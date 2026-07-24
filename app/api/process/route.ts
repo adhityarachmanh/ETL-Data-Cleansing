@@ -15,19 +15,21 @@ function normalizeText(value: string): string {
     return text.replace(/\s+/g, ' ').trim();
 }
 
-// Fungsi Threshold Keputusan Berdasarkan Rata-rata Skor Confidence
-function decideStatus(scores: number[]): string {
+// Fungsi Threshold Keputusan Dinamis Berdasarkan Parameter User / Pak Zoel
+function decideStatus(scores: number[], autoApproveMin: number = 90, stewardReviewMin: number = 75): string {
     if (scores.length === 0) return 'NO_MATCH';
     const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-    if (avg >= 95) return 'AUTO_APPROVE';
-    if (avg >= 85) return 'REVIEW';
+    if (avg >= autoApproveMin) return 'AUTO_APPROVE';
+    if (avg >= stewardReviewMin) return 'REVIEW';
     return 'NO_MATCH';
 }
 
 export async function POST(req: NextRequest) {
     try {
-        // Tangkap data domains (array dinamis) dan rawData dari request body
-        const { domains, rawData } = await req.json();
+        // Tangkap data domains, rawData, dan threshold dinamis dari request body
+        const { domains, rawData, thresholds } = await req.json();
+        const autoApproveMin = Number(thresholds?.autoApprove) || 90;
+        const stewardReviewMin = Number(thresholds?.stewardReview) || 75;
 
         if (!domains || !Array.isArray(domains) || domains.length === 0) {
             return NextResponse.json(
@@ -90,9 +92,10 @@ Kembalikan HANYA array JSON dengan format persis seperti ini:
   }
 ]
 
-Aturan:
-1. Berikan "confidence" angka murni antara 0.0 hingga 100.0 untuk setiap domain.
-2. Jika tidak ada yang cocok di suatu domain, isi "matched_index" dengan null dan berikan score confidence rendah (< 50).
+Aturan Skoring Confidence:
+1. Exact / Full Standard Match (contoh: "PLN" -> "PLN", "PERTAMINA" -> "PERTAMINA"): berikan confidence >= 95.0.
+2. Partial / Fuzzy / Contain Match (contoh: "Kabupaten Badung, Bali" -> "BALI", "PT TELKOM INDO" -> "TELKOM INDONESIA"): berikan confidence antara 85.0 hingga 92.0 agar masuk Steward Review.
+3. Tidak Cocok / Berbeda Jauh (contoh: "Warung Sejahtera" ke "PLN"): isi "matched_index" dengan null dan berikan confidence < 50.0.
 `;
 
         // 4. Panggil Gemini AI
@@ -137,7 +140,7 @@ Aturan:
                 scores.push(confidence);
             });
 
-            const status = decideStatus(scores);
+            const status = decideStatus(scores, autoApproveMin, stewardReviewMin);
 
             return {
                 raw_index: res.raw_index,
