@@ -29,6 +29,16 @@ const INITIAL_RAW_BATCH = [
   { customer_name_raw: "PT WARUNG SEJAHTERA", sector_raw: "Ritel Dagang" } // Contoh anomali
 ];
 
+// Tipe state untuk Modal Edit
+type EditModalState = {
+  isOpen: boolean;
+  type: 'MASTER_NAME' | 'MASTER_SECTOR' | 'RAW_BATCH' | null;
+  index: number;
+  val1: string;
+  val2: string;
+  error: string;
+};
+
 export default function Home() {
   // State Master Data Referensi NAMA
   const [masterList, setMasterList] = useState<any[]>([...INITIAL_MASTER]);
@@ -52,6 +62,16 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<any[]>([]);
 
+  // State Custom Modal Edit
+  const [editModal, setEditModal] = useState<EditModalState>({
+    isOpen: false,
+    type: null,
+    index: -1,
+    val1: '',
+    val2: '',
+    error: ''
+  });
+
   // --- FUNGSI PENGELOLA MASTER DATA NAMA ---
   const handleAddMaster = () => {
     if (!newMasterInput.trim()) return;
@@ -64,19 +84,15 @@ export default function Home() {
     setNewMasterInput('');
   };
 
-  const handleEditMaster = (indexToEdit: number) => {
-    const currentName = masterList[indexToEdit].customer_name_standard;
-    const newVal = window.prompt("Edit Nama Master Entitas:", currentName);
-    if (newVal !== null && newVal.trim() !== "") {
-      const cleanName = newVal.trim().toUpperCase();
-      if (masterList.some((m, idx) => m.customer_name_standard === cleanName && idx !== indexToEdit)) {
-        alert('Nama master entitas ini sudah ada!');
-        return;
-      }
-      const newList = [...masterList];
-      newList[indexToEdit].customer_name_standard = cleanName;
-      setMasterList(newList);
-    }
+  const openEditMaster = (index: number) => {
+    setEditModal({
+      isOpen: true,
+      type: 'MASTER_NAME',
+      index,
+      val1: masterList[index].customer_name_standard,
+      val2: '',
+      error: ''
+    });
   };
 
   const handleDeleteMaster = (indexToDelete: number) => {
@@ -98,19 +114,15 @@ export default function Home() {
     setNewSectorInput('');
   };
 
-  const handleEditSector = (indexToEdit: number) => {
-    const currentSector = sectorList[indexToEdit].sector_name_standard;
-    const newVal = window.prompt("Edit Sektor Master:", currentSector);
-    if (newVal !== null && newVal.trim() !== "") {
-      const cleanSector = newVal.trim().toUpperCase();
-      if (sectorList.some((s, idx) => s.sector_name_standard === cleanSector && idx !== indexToEdit)) {
-        alert('Sektor referensi ini sudah ada!');
-        return;
-      }
-      const newList = [...sectorList];
-      newList[indexToEdit].sector_name_standard = cleanSector;
-      setSectorList(newList);
-    }
+  const openEditSector = (index: number) => {
+    setEditModal({
+      isOpen: true,
+      type: 'MASTER_SECTOR',
+      index,
+      val1: sectorList[index].sector_name_standard,
+      val2: '',
+      error: ''
+    });
   };
 
   const handleDeleteSector = (indexToDelete: number) => {
@@ -131,25 +143,15 @@ export default function Home() {
     setNewRawSector('');
   };
 
-  // Fungsi Edit untuk Raw Batch (Nama & Sektor)
-  const handleEditRawBatch = (indexToEdit: number) => {
-    const currentItem = rawBatchList[indexToEdit];
-
-    // 1. Prompt untuk Nama Raw
-    const updatedName = window.prompt("Edit Nama Raw Entitas:", currentItem.customer_name_raw);
-    if (updatedName === null) return; // Batal jika user klik Cancel
-
-    // 2. Prompt untuk Sektor Raw
-    const updatedSector = window.prompt("Edit Sektor Raw:", currentItem.sector_raw || "");
-    if (updatedSector === null) return; // Batal jika user klik Cancel
-
-    // Update Data
-    const newList = [...rawBatchList];
-    newList[indexToEdit] = {
-      customer_name_raw: updatedName.trim(),
-      sector_raw: updatedSector.trim()
-    };
-    setRawBatchList(newList);
+  const openEditRawBatch = (index: number) => {
+    setEditModal({
+      isOpen: true,
+      type: 'RAW_BATCH',
+      index,
+      val1: rawBatchList[index].customer_name_raw,
+      val2: rawBatchList[index].sector_raw || '',
+      error: ''
+    });
   };
 
   const handleDeleteRawFromBatch = (indexToDelete: number) => {
@@ -158,6 +160,45 @@ export default function Home() {
 
   const handleResetBatch = () => setRawBatchList([...INITIAL_RAW_BATCH]);
   const handleClearBatch = () => setRawBatchList([]);
+
+
+  // --- FUNGSI SIMPAN CUSTOM MODAL ---
+  const handleSaveModal = () => {
+    const { type, index, val1, val2 } = editModal;
+
+    if (type === 'MASTER_NAME') {
+      const cleanName = val1.trim().toUpperCase();
+      if (!cleanName) return setEditModal({ ...editModal, error: 'Nama tidak boleh kosong!' });
+      if (masterList.some((m, idx) => m.customer_name_standard === cleanName && idx !== index)) {
+        return setEditModal({ ...editModal, error: 'Nama master entitas ini sudah ada!' });
+      }
+      const newList = [...masterList];
+      newList[index].customer_name_standard = cleanName;
+      setMasterList(newList);
+    }
+    else if (type === 'MASTER_SECTOR') {
+      const cleanSector = val1.trim().toUpperCase();
+      if (!cleanSector) return setEditModal({ ...editModal, error: 'Sektor tidak boleh kosong!' });
+      if (sectorList.some((s, idx) => s.sector_name_standard === cleanSector && idx !== index)) {
+        return setEditModal({ ...editModal, error: 'Sektor referensi ini sudah ada!' });
+      }
+      const newList = [...sectorList];
+      newList[index].sector_name_standard = cleanSector;
+      setSectorList(newList);
+    }
+    else if (type === 'RAW_BATCH') {
+      if (!val1.trim()) return setEditModal({ ...editModal, error: 'Nama raw entitas tidak boleh kosong!' });
+      const newList = [...rawBatchList];
+      newList[index] = {
+        customer_name_raw: val1.trim(),
+        sector_raw: val2.trim()
+      };
+      setRawBatchList(newList);
+    }
+
+    // Tutup modal jika berhasil
+    setEditModal({ isOpen: false, type: null, index: -1, val1: '', val2: '', error: '' });
+  };
 
   // --- EXECUTE PROCESS AI ---
   const processAI = async (rawDataToProcess: any[]) => {
@@ -236,7 +277,7 @@ export default function Home() {
   const cleanRate = totalCount > 0 ? Math.round((autoApproveCount / totalCount) * 100) : 0;
 
   return (
-    <main className="min-h-screen p-4 sm:p-6 md:p-10 bg-gray-100 text-gray-900 font-sans">
+    <main className="min-h-screen p-4 sm:p-6 md:p-10 bg-gray-100 text-gray-900 font-sans relative">
       <div className="max-w-6xl mx-auto space-y-6">
 
         {/* Header Flat Light */}
@@ -317,15 +358,15 @@ export default function Home() {
                   {showMasterManager && (
                     <div className="ml-1 flex items-center">
                       <button
-                        onClick={() => handleEditMaster(i)}
-                        className="text-blue-500 hover:text-blue-700 font-bold px-1 rounded hover:bg-blue-100"
+                        onClick={() => openEditMaster(i)}
+                        className="text-blue-500 hover:text-blue-700 font-bold px-1 rounded hover:bg-blue-100 transition-colors"
                         title="Edit"
                       >
                         ✎
                       </button>
                       <button
                         onClick={() => handleDeleteMaster(i)}
-                        className="text-red-500 hover:text-red-700 font-bold px-1 rounded hover:bg-red-50"
+                        className="text-red-500 hover:text-red-700 font-bold px-1 rounded hover:bg-red-50 transition-colors"
                         title="Hapus"
                       >
                         ×
@@ -393,20 +434,20 @@ export default function Home() {
             <div className="flex flex-wrap gap-2">
               {sectorList.length === 0 && <span className="text-xs text-gray-400 italic">Data kosong...</span>}
               {sectorList.map((s, i) => (
-                <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-900 rounded border border-emerald-200 text-xs font-semibold">
+                <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-900 rounded border border-emerald-200 text-xs font-semibold group">
                   {s.sector_name_standard}
                   {showSectorManager && (
                     <div className="ml-1 flex items-center">
                       <button
-                        onClick={() => handleEditSector(i)}
-                        className="text-emerald-600 hover:text-emerald-800 font-bold px-1 rounded hover:bg-emerald-100"
+                        onClick={() => openEditSector(i)}
+                        className="text-emerald-600 hover:text-emerald-800 font-bold px-1 rounded hover:bg-emerald-100 transition-colors"
                         title="Edit"
                       >
                         ✎
                       </button>
                       <button
                         onClick={() => handleDeleteSector(i)}
-                        className="text-red-500 hover:text-red-700 font-bold px-1 rounded hover:bg-red-50"
+                        className="text-red-500 hover:text-red-700 font-bold px-1 rounded hover:bg-red-50 transition-colors"
                         title="Hapus"
                       >
                         ×
@@ -532,15 +573,15 @@ export default function Home() {
                     {showBatchManager && (
                       <div className="flex items-center gap-1 shrink-0">
                         <button
-                          onClick={() => handleEditRawBatch(idx)}
-                          className="text-gray-500 hover:text-gray-800 font-bold px-1.5 py-0.5 rounded hover:bg-gray-200 text-xs"
+                          onClick={() => openEditRawBatch(idx)}
+                          className="text-gray-500 hover:text-gray-800 font-bold px-1.5 py-0.5 rounded hover:bg-gray-200 text-xs transition-colors"
                           title="Edit"
                         >
                           ✎
                         </button>
                         <button
                           onClick={() => handleDeleteRawFromBatch(idx)}
-                          className="text-red-500 hover:text-red-700 font-bold px-1.5 py-0.5 rounded hover:bg-red-50 text-xs"
+                          className="text-red-500 hover:text-red-700 font-bold px-1.5 py-0.5 rounded hover:bg-red-50 text-xs transition-colors"
                           title="Hapus"
                         >
                           ×
@@ -690,6 +731,84 @@ export default function Home() {
         )}
 
       </div>
+
+      {/* --- CUSTOM MODAL EDIT UI --- */}
+      {editModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4  bg-opacity-60 backdrop-blur-sm transition-opacity">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 space-y-5 animate-in fade-in zoom-in-95 duration-200">
+
+            <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+              <h3 className="text-lg font-bold text-gray-900">
+                {editModal.type === 'MASTER_NAME' && 'Edit Master Nama Entitas'}
+                {editModal.type === 'MASTER_SECTOR' && 'Edit Master Sektor'}
+                {editModal.type === 'RAW_BATCH' && 'Edit Data Mentah (Batch)'}
+              </h3>
+              <button
+                onClick={() => setEditModal({ ...editModal, isOpen: false, error: '' })}
+                className="text-gray-400 hover:text-gray-700 font-bold px-2 rounded hover:bg-gray-100"
+              >
+                ✕
+              </button>
+            </div>
+
+            {editModal.error && (
+              <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded-md font-semibold flex items-center gap-2">
+                <span className="text-red-500">⚠️</span> {editModal.error}
+              </div>
+            )}
+
+            <div className="space-y-4">
+              {/* Input Value 1 (Bisa Nama Master, Sektor Master, atau Nama Raw Batch) */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                  {editModal.type === 'RAW_BATCH' ? 'Nama Raw Entitas' : 'Nama Standar Referensi'}
+                </label>
+                <input
+                  type="text"
+                  value={editModal.val1}
+                  onChange={(e) => setEditModal({ ...editModal, val1: e.target.value, error: '' })}
+                  onKeyDown={(e) => e.key === 'Enter' && (editModal.type !== 'RAW_BATCH' ? handleSaveModal() : null)}
+                  className="w-full px-3.5 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                  autoFocus
+                />
+              </div>
+
+              {/* Input Value 2 (Hanya muncul jika yang diedit adalah Raw Batch Sektor) */}
+              {editModal.type === 'RAW_BATCH' && (
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                    Sektor Raw
+                  </label>
+                  <input
+                    type="text"
+                    value={editModal.val2}
+                    onChange={(e) => setEditModal({ ...editModal, val2: e.target.value, error: '' })}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSaveModal()}
+                    className="w-full px-3.5 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+              <button
+                onClick={() => setEditModal({ ...editModal, isOpen: false, error: '' })}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-md transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleSaveModal}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-md shadow-sm transition-colors"
+              >
+                Simpan Perubahan
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </main>
   );
 }
