@@ -61,23 +61,20 @@ export default function Home() {
   const getStatusBadge = (status: string) => {
     if (status === 'AUTO_APPROVE') {
       return (
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span className="px-2.5 py-1 rounded text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
           AUTO APPROVE (SSOT Clean)
         </span>
       );
     }
     if (status === 'REVIEW') {
       return (
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 shadow-sm">
-          <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+        <span className="px-2.5 py-1 rounded text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">
           STEWARD REVIEW
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20 shadow-sm">
-        <span className="w-2 h-2 rounded-full bg-rose-400"></span>
+      <span className="px-2.5 py-1 rounded text-xs font-semibold bg-red-100 text-red-800 border border-red-300">
         NO MATCH (Anomali)
       </span>
     );
@@ -90,52 +87,53 @@ export default function Home() {
   const cleanRate = totalCount > 0 ? Math.round((autoApproveCount / totalCount) * 100) : 0;
 
   return (
-    <main className="min-h-screen p-3 sm:p-6 md:p-10 bg-slate-900 text-slate-100 font-sans">
-      <div className="max-w-6xl mx-auto space-y-6 sm:space-y-8">
+    <main className="min-h-screen p-4 sm:p-6 md:p-10 bg-gray-100 text-gray-900 font-sans">
+      <div className="max-w-5xl mx-auto space-y-6">
 
-        {/* Header Demo & Badge SSOT */}
-        <header className="text-center space-y-2.5 sm:space-y-3 pt-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-[11px] sm:text-xs font-medium tracking-wide uppercase">
-            ⚡ AI Data Quality & Cleansing Engine • SSOT Standard
+        {/* Header Flat Light */}
+        <header className="bg-white p-5 sm:p-6 rounded-lg border border-gray-300 space-y-2">
+          <div className="text-xs font-bold text-blue-700 uppercase tracking-wider">
+            AI Data Quality & Cleansing Engine • SSOT Standard
           </div>
-          <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight bg-gradient-to-r from-blue-400 via-indigo-300 to-purple-400 bg-clip-text text-transparent px-2">
-            Simulasi Data Cleansing Before ➔ After
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+            Simulasi Data Cleansing (Before ➔ After)
           </h1>
-          <p className="text-slate-400 max-w-2xl mx-auto text-xs sm:text-sm md:text-base px-2">
-            Mencocokkan data mentah berantakan (RAW) ke Golden Reference Master Data (SSOT) menggunakan Gemini AI & Decision Threshold.
+          <p className="text-sm text-gray-600">
+            Mencocokkan data mentah berantakan (RAW) ke Master Data Referensi (SSOT) menggunakan Gemini AI.
           </p>
         </header>
 
         {/* Info Master Data SSOT */}
-        <div className="bg-slate-800/70 backdrop-blur p-4 sm:p-6 rounded-2xl border border-slate-700/60 shadow-xl space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-[11px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-blue-400"></span>
+        <div className="bg-white p-5 rounded-lg border border-gray-300 space-y-3">
+          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+            <h2 className="text-xs font-bold text-gray-700 uppercase tracking-wider">
               Golden Reference Master Data (SSOT)
             </h2>
-            <span className="text-[11px] sm:text-xs text-slate-500">{SAMPLE_MASTER.length} Entitas</span>
+            <span className="text-xs text-gray-500 font-medium">
+              {SAMPLE_MASTER.length} Entitas Terdaftar
+            </span>
           </div>
           <div className="flex flex-wrap gap-2">
             {SAMPLE_MASTER.map((m, i) => (
-              <span key={i} className="px-3 py-1.5 bg-blue-500/10 text-blue-300 rounded-lg text-xs sm:text-sm font-semibold border border-blue-500/20 flex items-center gap-1.5">
-                <span className="text-[10px] text-blue-400 font-mono">#0{i+1}</span>
+              <span key={i} className="px-3 py-1 bg-blue-50 text-blue-800 rounded border border-blue-200 text-xs sm:text-sm font-medium">
+                <span className="text-blue-500 font-mono mr-1.5">#0{i+1}</span>
                 {m.customer_name_standard}
               </span>
             ))}
           </div>
         </div>
 
-        {/* Area Interaksi Control Panel */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+        {/* Control Panel Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
 
           {/* Opsi 1: Test Ketik Single */}
-          <div className="bg-slate-800/70 backdrop-blur p-4 sm:p-6 rounded-2xl border border-slate-700/60 shadow-xl space-y-4 flex flex-col justify-between">
+          <div className="bg-white p-5 rounded-lg border border-gray-300 space-y-4 flex flex-col justify-between">
             <div>
-              <h2 className="font-bold text-base sm:text-lg text-slate-100 flex items-center gap-2">
-                ✍️ Uji Coba Single Input (Interactive)
+              <h2 className="font-bold text-base text-gray-900">
+                1. Uji Coba Single Input
               </h2>
-              <p className="text-xs text-slate-400 mt-1">
-                Masukkan contoh nama debitur mentah (contoh: <code className="text-amber-300">PT. PLN (Persero) Tbk</code>)
+              <p className="text-xs text-gray-600 mt-1">
+                Ketik nama mentah (contoh: <code className="bg-gray-100 text-gray-800 px-1 py-0.5 rounded font-mono">PT. PLN (Persero) Tbk</code>)
               </p>
             </div>
             <div className="space-y-3 pt-2">
@@ -144,42 +142,42 @@ export default function Home() {
                 value={singleInput}
                 onChange={(e) => setSingleInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSingleTest()}
-                placeholder="Contoh: PT TELKOM INDONESIA TBK..."
-                className="w-full px-4 py-3 bg-slate-900/80 border border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-100 placeholder-slate-500 text-sm focus:outline-none transition"
+                placeholder="Masukkan nama raw debitur..."
+                className="w-full px-3 py-2 bg-white border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
               />
               <button
                 onClick={handleSingleTest}
                 disabled={loading || !singleInput.trim()}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-500 active:scale-[0.98] disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold rounded-xl shadow-lg shadow-blue-600/20 transition flex items-center justify-center gap-2 text-sm"
+                className="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-medium rounded text-sm transition"
               >
-                {loading ? 'AI Memproses...' : 'Uji Cleansing Data Ini ➔'}
+                {loading ? 'Memproses...' : 'Uji Cleansing Data Ini ➔'}
               </button>
             </div>
           </div>
 
           {/* Opsi 2: Simulasi Batch */}
-          <div className="bg-slate-800/70 backdrop-blur p-4 sm:p-6 rounded-2xl border border-slate-700/60 shadow-xl space-y-4 flex flex-col justify-between">
+          <div className="bg-white p-5 rounded-lg border border-gray-300 space-y-4 flex flex-col justify-between">
             <div>
-              <h2 className="font-bold text-base sm:text-lg text-slate-100 flex items-center gap-2">
-                ⚡ Simulasi Batch Cleansing (5 Data)
+              <h2 className="font-bold text-base text-gray-900">
+                2. Simulasi Batch (5 Data Raw)
               </h2>
-              <p className="text-xs text-slate-400 mt-1">
-                Jalankan simulasi otomatis untuk melihat transformasi data mentah dari berbagai sumber sistem sekaligus.
+              <p className="text-xs text-gray-600 mt-1">
+                Jalankan cleansing otomatis untuk 5 sampel data sekaligus.
               </p>
             </div>
             <div className="space-y-3 pt-2">
-              <div className="bg-slate-900/60 p-3 rounded-xl border border-slate-800 text-[11px] sm:text-xs text-slate-400 space-y-1">
+              <div className="bg-gray-50 p-2.5 rounded border border-gray-200 text-xs text-gray-600 space-y-1 font-mono">
                 <div>• PT. PLN (Persero) Tbk</div>
                 <div>• PT TELKOM INDO</div>
                 <div>• PERTAMINA, PT PERSERO</div>
-                <div>• PT WARUNG SEJAHTERA (Anomali Test)</div>
+                <div>• PT WARUNG SEJAHTERA (Anomali)</div>
               </div>
               <button
                 onClick={handleBatchTest}
                 disabled={loading}
-                className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] disabled:bg-slate-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/20 transition flex items-center justify-center gap-2 text-sm"
+                className="w-full py-2 bg-gray-800 hover:bg-gray-900 disabled:bg-gray-300 text-white font-medium rounded text-sm transition"
               >
-                {loading ? 'Sistem AI Sedang Berjalan...' : '🚀 Jalankan Simulasi Batch Engine'}
+                {loading ? 'Memproses Batch...' : 'Jalankan Simulasi Batch'}
               </button>
             </div>
           </div>
@@ -188,95 +186,60 @@ export default function Home() {
 
         {/* METRIK RESULT / BEFORE vs AFTER DASHBOARD */}
         {results.length > 0 && (
-          <div className="space-y-4 sm:space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="space-y-5">
             
-            {/* KPI Cards Ringkasan Dashboard */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-4">
-              <div className="bg-slate-800/80 p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-700/80">
-                <div className="text-[11px] sm:text-xs font-medium text-slate-400">Total Raw (Before)</div>
-                <div className="text-xl sm:text-2xl font-black text-slate-100 mt-1">{totalCount} Record</div>
-                <div className="text-[10px] text-slate-500 mt-0.5 hidden sm:block">Data mentah Staging</div>
+            {/* KPI Cards Ringkasan */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+              <div className="bg-white p-4 rounded-lg border border-gray-300">
+                <div className="text-xs font-semibold text-gray-500">Total Raw (Before)</div>
+                <div className="text-xl font-bold text-gray-900 mt-1">{totalCount} Record</div>
               </div>
               
-              <div className="bg-emerald-950/40 p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-emerald-800/40">
-                <div className="text-[11px] sm:text-xs font-medium text-emerald-400">SSOT Clean</div>
-                <div className="text-xl sm:text-2xl font-black text-emerald-300 mt-1">{autoApproveCount} Record</div>
-                <div className="text-[10px] text-emerald-500 mt-0.5 hidden sm:block">Score ≥ 95%</div>
+              <div className="bg-white p-4 rounded-lg border border-gray-300 border-l-4 border-l-emerald-500">
+                <div className="text-xs font-semibold text-emerald-800">SSOT Clean</div>
+                <div className="text-xl font-bold text-emerald-900 mt-1">{autoApproveCount} Record</div>
               </div>
 
-              <div className="bg-amber-950/40 p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-amber-800/40">
-                <div className="text-[11px] sm:text-xs font-medium text-amber-400">Steward Review</div>
-                <div className="text-xl sm:text-2xl font-black text-amber-300 mt-1">{reviewCount} Record</div>
-                <div className="text-[10px] text-amber-500 mt-0.5 hidden sm:block">Score 85% - 94.9%</div>
+              <div className="bg-white p-4 rounded-lg border border-gray-300 border-l-4 border-l-amber-500">
+                <div className="text-xs font-semibold text-amber-800">Steward Review</div>
+                <div className="text-xl font-bold text-amber-900 mt-1">{reviewCount} Record</div>
               </div>
 
-              <div className="bg-blue-950/40 p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-blue-800/40">
-                <div className="text-[11px] sm:text-xs font-medium text-blue-400">Clean Rate</div>
-                <div className="text-xl sm:text-2xl font-black text-blue-300 mt-1">{cleanRate}%</div>
-                <div className="text-[10px] text-blue-500 mt-0.5 hidden sm:block">Tingkat Otomasi AI</div>
+              <div className="bg-white p-4 rounded-lg border border-gray-300 border-l-4 border-l-blue-500">
+                <div className="text-xs font-semibold text-blue-800">Clean Rate</div>
+                <div className="text-xl font-bold text-blue-900 mt-1">{cleanRate}%</div>
               </div>
             </div>
 
-            {/* TABEL / CARDS AUDIT TRAIL BEFORE VS AFTER */}
-            <div className="bg-slate-800/80 backdrop-blur rounded-2xl border border-slate-700/80 overflow-hidden shadow-2xl">
-              <div className="p-4 sm:p-5 bg-slate-800/90 border-b border-slate-700 flex justify-between items-center gap-2">
-                <div>
-                  <h2 className="font-bold text-base sm:text-lg text-slate-100 flex items-center gap-2">
-                    📋 Transformasi Cleansing (Before ➔ After)
-                  </h2>
-                  <p className="text-xs text-slate-400 mt-0.5 hidden sm:block">
-                    Hasil perbandingan data mentah staging terhadap standar Golden Record SSOT
-                  </p>
-                </div>
+            {/* TABEL SIMULASI BEFORE VS AFTER */}
+            <div className="bg-white rounded-lg border border-gray-300 overflow-hidden">
+              <div className="p-4 bg-gray-50 border-b border-gray-300 flex justify-between items-center">
+                <h2 className="font-bold text-sm text-gray-900">
+                  Audit Trail Cleansing (Before ➔ After)
+                </h2>
                 <button 
                   onClick={() => setResults([])} 
-                  className="px-3 py-1.5 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 text-xs font-semibold rounded-lg border border-rose-500/20 transition whitespace-nowrap"
+                  className="px-3 py-1 bg-white border border-gray-300 text-gray-700 hover:bg-gray-100 text-xs font-medium rounded transition"
                 >
-                  Bersihkan
+                  Clear Hasil
                 </button>
               </div>
 
-              {/* TAMPILAN MOBILE (Card View untuk < md screen) */}
-              <div className="block md:hidden divide-y divide-slate-700/60 p-3 space-y-3">
+              {/* TAMPILAN MOBILE (< md) */}
+              <div className="block md:hidden divide-y divide-gray-200 p-3 space-y-3">
                 {results.map((row, idx) => (
-                  <div key={idx} className="bg-slate-900/70 p-4 rounded-xl border border-slate-800 space-y-3">
-                    <div className="flex justify-between items-start gap-2">
-                      <div className="space-y-1">
-                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">🔴 BEFORE (Raw Data)</span>
-                        <div className="font-mono text-xs text-rose-300 bg-rose-950/40 px-2.5 py-1 rounded border border-rose-800/40 inline-block break-all">
-                          {row.original_value}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-[10px] text-slate-400 font-bold block">CONFIDENCE</span>
-                        <span className={`font-mono font-bold text-xs ${
-                          row.confidence_score >= 95 ? 'text-emerald-400' :
-                          row.confidence_score >= 85 ? 'text-amber-400' : 'text-rose-400'
-                        }`}>
-                          {row.confidence_score}%
-                        </span>
-                      </div>
+                  <div key={idx} className="bg-gray-50 p-3 rounded border border-gray-200 space-y-2 text-xs">
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold text-gray-500 uppercase">RAW (BEFORE)</span>
+                      <span className="font-mono font-bold text-gray-700">Score: {row.confidence_score}%</span>
+                    </div>
+                    <div className="font-mono text-gray-900 bg-white p-2 rounded border border-gray-300 break-all font-semibold">
+                      {row.original_value}
                     </div>
 
-                    <div className="space-y-1">
-                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">⚙️ PRE-CLEANSING</span>
-                      <div className="font-mono text-xs text-slate-300 bg-slate-800/80 px-2.5 py-1 rounded border border-slate-700/50 inline-block break-all">
-                        {row.cleansed_value}
-                      </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">🟢 AFTER (SSOT Master)</span>
-                      {row.suggested_master !== 'TIDAK DITEMUKAN' ? (
-                        <div className="font-bold text-xs text-emerald-400 bg-emerald-950/40 px-2.5 py-1 rounded border border-emerald-800/50 inline-flex items-center gap-1.5">
-                          <span>✓</span>
-                          {row.suggested_master}
-                        </div>
-                      ) : (
-                        <div className="font-semibold text-xs text-rose-400 bg-rose-950/40 px-2.5 py-1 rounded border border-rose-800/50 inline-block">
-                          ✕ TIDAK DITEMUKAN
-                        </div>
-                      )}
+                    <div className="font-bold text-gray-500 uppercase pt-1">AFTER (SSOT MASTER)</div>
+                    <div className="font-bold text-gray-900 bg-white p-2 rounded border border-gray-300">
+                      {row.suggested_master}
                     </div>
 
                     <div className="pt-1">
@@ -286,61 +249,47 @@ export default function Home() {
                 ))}
               </div>
 
-              {/* TAMPILAN DESKTOP (Table View untuk >= md screen) */}
+              {/* TAMPILAN DESKTOP (>= md) */}
               <div className="hidden md:block overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                  <thead className="bg-slate-900/60 text-slate-400 border-b border-slate-700 text-xs uppercase tracking-wider">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-gray-50 text-gray-700 border-b border-gray-300 uppercase font-semibold">
                     <tr>
-                      <th className="px-6 py-4 font-semibold">🔴 BEFORE (Raw Data)</th>
-                      <th className="px-6 py-4 font-semibold">⚙️ PRE-CLEANSING</th>
-                      <th className="px-6 py-4 font-semibold">🟢 AFTER (SSOT Golden Master)</th>
-                      <th className="px-6 py-4 font-semibold text-center">CONFIDENCE</th>
-                      <th className="px-6 py-4 font-semibold">STATUS & AKSI SISTEM</th>
+                      <th className="px-4 py-3">BEFORE (Raw Data)</th>
+                      <th className="px-4 py-3">PRE-CLEANSING</th>
+                      <th className="px-4 py-3">AFTER (SSOT Golden Master)</th>
+                      <th className="px-4 py-3 text-center">CONFIDENCE</th>
+                      <th className="px-4 py-3">STATUS AI</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-700/50">
+                  <tbody className="divide-y divide-gray-200">
                     {results.map((row, idx) => (
-                      <tr key={idx} className="hover:bg-slate-700/30 transition-colors">
+                      <tr key={idx} className="hover:bg-gray-50 transition-colors">
                         {/* BEFORE */}
-                        <td className="px-6 py-4">
-                          <div className="font-mono text-xs text-rose-300 bg-rose-950/30 px-2.5 py-1.5 rounded-md border border-rose-800/30 inline-block">
+                        <td className="px-4 py-3">
+                          <span className="font-mono text-gray-900 bg-gray-100 px-2 py-1 rounded border border-gray-200 font-semibold">
                             {row.original_value}
-                          </div>
-                        </td>
-
-                        {/* PRE-CLEANSING */}
-                        <td className="px-6 py-4">
-                          <div className="font-mono text-xs text-slate-300 bg-slate-900/60 px-2.5 py-1.5 rounded-md border border-slate-700/50 inline-block">
-                            {row.cleansed_value}
-                          </div>
-                        </td>
-
-                        {/* AFTER */}
-                        <td className="px-6 py-4">
-                          {row.suggested_master !== 'TIDAK DITEMUKAN' ? (
-                            <div className="font-bold text-emerald-400 bg-emerald-950/40 px-3 py-1.5 rounded-lg border border-emerald-800/50 inline-flex items-center gap-2">
-                              <span>✓</span>
-                              {row.suggested_master}
-                            </div>
-                          ) : (
-                            <div className="font-semibold text-rose-400 bg-rose-950/40 px-3 py-1.5 rounded-lg border border-rose-800/50 inline-block">
-                              ✕ TIDAK DITEMUKAN
-                            </div>
-                          )}
-                        </td>
-
-                        {/* CONFIDENCE */}
-                        <td className="px-6 py-4 text-center">
-                          <span className={`font-mono font-bold text-sm ${
-                            row.confidence_score >= 95 ? 'text-emerald-400' :
-                            row.confidence_score >= 85 ? 'text-amber-400' : 'text-rose-400'
-                          }`}>
-                            {row.confidence_score}%
                           </span>
                         </td>
 
+                        {/* PRE-CLEANSING */}
+                        <td className="px-4 py-3 font-mono text-gray-700">
+                          {row.cleansed_value}
+                        </td>
+
+                        {/* AFTER */}
+                        <td className="px-4 py-3">
+                          <span className="font-bold text-gray-900">
+                            {row.suggested_master}
+                          </span>
+                        </td>
+
+                        {/* CONFIDENCE */}
+                        <td className="px-4 py-3 text-center font-mono font-bold text-gray-900">
+                          {row.confidence_score}%
+                        </td>
+
                         {/* STATUS */}
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-3">
                           {getStatusBadge(row.ai_status)}
                         </td>
                       </tr>
