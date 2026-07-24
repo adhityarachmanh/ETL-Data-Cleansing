@@ -620,14 +620,27 @@ export default function Home() {
           {/* Batch Input */}
           <div className="bg-white p-5 rounded-lg border border-gray-300 space-y-4 flex flex-col justify-between">
             <div>
-              <div className="flex justify-between items-center">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                 <h2 className="font-bold text-base text-gray-900">2. Simulasi Batch ({rawBatchList.length} Data Mentah)</h2>
-                <div className="flex gap-2">
-                  <button onClick={() => setShowBatchManager(!showBatchManager)} className="text-xs text-blue-700 hover:underline">
-                    {showBatchManager ? 'Tutup Pengelola' : '+ Edit Batch'}
+                <div className="flex flex-wrap items-center gap-1.5 pt-1 sm:pt-0">
+                  <button
+                    onClick={() => setShowBatchManager(!showBatchManager)}
+                    className="px-2.5 py-1 text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 rounded border border-blue-200 transition shadow-2xs"
+                  >
+                    {showBatchManager ? '✕ Tutup Pengelola' : '⚙️ Kelola Batch'}
                   </button>
-                  <button onClick={handleResetBatch} className="text-xs text-gray-500 underline">Reset</button>
-                  <button onClick={handleClearBatch} className="text-xs text-red-500 underline">Kosongkan</button>
+                  <button
+                    onClick={handleResetBatch}
+                    className="px-2.5 py-1 text-xs font-medium bg-gray-50 text-gray-600 hover:bg-gray-100 rounded border border-gray-200 transition"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    onClick={handleClearBatch}
+                    className="px-2.5 py-1 text-xs font-medium bg-red-50 text-red-600 hover:bg-red-100 rounded border border-red-200 transition"
+                  >
+                    Kosongkan
+                  </button>
                 </div>
               </div>
             </div>
@@ -738,7 +751,104 @@ export default function Home() {
                 </button>
               </div>
 
-              <div className="overflow-x-auto">
+              {/* VIEW 1: CARD VIEW FOR MOBILE & TABLET (<1024px) */}
+              <div className="block lg:hidden p-4 space-y-4 bg-gray-50">
+                {results.map((row, idx) => (
+                  <div key={idx} className="bg-white p-4 rounded-lg border border-gray-300 shadow-xs space-y-3">
+                    {/* Card Header: Record # & Status */}
+                    <div className="flex justify-between items-center border-b border-gray-200 pb-2.5 flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-mono font-bold px-2 py-0.5 bg-gray-100 text-gray-800 rounded border border-gray-200">
+                          Record #{idx + 1 < 10 ? `0${idx + 1}` : idx + 1}
+                        </span>
+                      </div>
+                      <div>
+                        {getStatusBadge(row)}
+                      </div>
+                    </div>
+
+                    {/* Warning Anomali Banner (If Present) */}
+                    {row.warning_note && (
+                      <div className="p-2.5 bg-amber-50 border border-amber-300 text-amber-900 text-xs rounded-md font-medium flex items-start gap-2 leading-snug">
+                        <span className="shrink-0 text-amber-600 font-bold">⚠️ Anomali:</span>
+                        <span>{row.warning_note}</span>
+                      </div>
+                    )}
+
+                    {/* Grid Before vs After per Active Domain */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      {/* BEFORE */}
+                      <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 space-y-2">
+                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                          <span>🔴</span> RAW DATA (BEFORE)
+                        </div>
+                        <div className="space-y-1.5">
+                          {activeDomains.map((d) => (
+                            <div key={d.id} className="text-xs">
+                              <span className="text-[10px] text-gray-400 font-semibold block">{d.name}:</span>
+                              <span className="font-mono font-semibold text-gray-900 bg-white px-2 py-1 rounded border border-gray-200 block break-all mt-0.5">
+                                {row.domain_matches?.[d.id]?.raw_val || '-'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* AFTER */}
+                      <div className="bg-emerald-50/50 p-3 rounded-lg border border-emerald-200 space-y-2">
+                        <div className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1">
+                          <span>🟢</span> SSOT MATCHED (AFTER)
+                        </div>
+                        <div className="space-y-1.5">
+                          {activeDomains.map((d) => {
+                            const matchedVal = row.domain_matches?.[d.id]?.matched_val;
+                            const isNotFound = matchedVal === 'TIDAK DITEMUKAN';
+                            return (
+                              <div key={d.id} className="text-xs">
+                                <span className="text-[10px] text-emerald-700/70 font-semibold block">{d.name} Standard:</span>
+                                <span
+                                  className={`font-bold px-2 py-1 rounded block mt-0.5 ${isNotFound
+                                      ? 'bg-red-50 text-red-600 border border-red-200 italic'
+                                      : 'bg-white text-emerald-900 border border-emerald-200'
+                                    }`}
+                                >
+                                  {matchedVal || '-'}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Footer: Confidence Scores */}
+                    <div className="flex items-center justify-between pt-2 border-t border-gray-100 flex-wrap gap-2 text-xs">
+                      <span className="text-gray-500 font-semibold text-[11px]">Skor Kemiripan AI:</span>
+                      <div className="flex gap-2 flex-wrap">
+                        {activeDomains.map((d) => {
+                          const score = Number(row.domain_matches?.[d.id]?.confidence || 0);
+                          let scoreColor = 'text-red-600 bg-red-50 border-red-200';
+                          if (score >= 80) scoreColor = 'text-emerald-700 bg-emerald-50 border-emerald-200';
+                          else if (score >= 60) scoreColor = 'text-amber-700 bg-amber-50 border-amber-200';
+
+                          return (
+                            <div key={d.id} className="flex items-center gap-1">
+                              <span className="text-[10px] text-gray-400 font-mono">{d.name}:</span>
+                              <span className={`font-mono font-bold px-2 py-0.5 rounded border text-[11px] ${scoreColor}`}>
+                                {score}%
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                  </div>
+                ))}
+              </div>
+
+              {/* VIEW 2: TABLE VIEW FOR DESKTOP (>=1024px) */}
+              <div className="hidden lg:block overflow-x-auto">
                 <table className="w-full text-xs text-left min-w-[750px] border-collapse">
                   <thead className="bg-gray-100 text-gray-700 border-b border-gray-300 uppercase font-bold text-[11px] tracking-wider">
                     <tr>
