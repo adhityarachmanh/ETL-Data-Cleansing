@@ -359,6 +359,7 @@ export default function Home() {
 
   // --- PROCESS AI ---
   const [streamProgress, setStreamProgress] = useState('');
+  const [streamPhase, setStreamPhase] = useState<'idle' | 'thinking' | 'answering'>('idle');
   const progressRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -371,6 +372,7 @@ export default function Home() {
     setLoading(true);
     setResults([]);
     setStreamProgress('');
+    setStreamPhase('idle');
 
     const runSSE = async (body: Record<string, unknown>): Promise<void> => {
       const response = await fetch('/api/process', {
@@ -382,6 +384,7 @@ export default function Home() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let phase: 'idle' | 'thinking' | 'answering' = 'idle';
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -394,7 +397,21 @@ export default function Home() {
           if (!data) continue;
           const payload = JSON.parse(data);
           if (type === 'progress') {
-            setStreamProgress((prev) => (prev + (payload.text ?? '')).slice(-2000));
+            const source = payload.source === 'thinking' ? 'thinking' : 'answer';
+            if (source === 'thinking') {
+              if (phase === 'idle') {
+                phase = 'thinking';
+                setStreamPhase('thinking');
+              }
+              setStreamProgress((prev) => (prev + (payload.text ?? '')).slice(-2000));
+            } else {
+              if (phase === 'thinking') {
+                setStreamProgress((prev) => prev + '\n\n——— JAWABAN AI ———\n\n');
+              }
+              phase = 'answering';
+              setStreamPhase('answering');
+              setStreamProgress((prev) => (prev + (payload.text ?? '')).slice(-2000));
+            }
           } else if (type === 'retry') {
             setStreamProgress((prev) => prev + '\n⚠️ Output tidak valid, mencoba ulang...\n');
           } else if (type === 'result') {
@@ -945,7 +962,13 @@ export default function Home() {
         {loading && (
           <div className="bg-gray-900 text-emerald-300 rounded-lg border border-gray-700 p-3 font-mono text-[11px] leading-relaxed shadow-sm">
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">⚡ Progress AI (Streaming)</span>
+              <span className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">
+                {streamPhase === 'thinking'
+                  ? '🧠 AI Sedang Berpikir...'
+                  : streamPhase === 'answering'
+                    ? '✍️ AI Menulis Jawaban...'
+                    : '⚡ Progress AI (Streaming)'}
+              </span>
               <span className="animate-pulse text-gray-500">live</span>
             </div>
             <div ref={progressRef} className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words">

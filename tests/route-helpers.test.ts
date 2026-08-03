@@ -33,15 +33,12 @@ vi.mock('ai', () => ({ streamText: vi.fn() }));
 
 import { afterEach, vi } from 'vitest';
 import { streamText } from 'ai';
-import {
-    aiRequestBodyTransform,
-    processStreamResponse,
-    streamJsonProcess,
-} from '../app/api/process/route';
+import { processStreamResponse, streamJsonProcess } from '../app/api/process/route';
 
 const mocked = vi.mocked(streamText);
-const mockStream = (chunks: string[]) => ({
-    textStream: (async function* () { for (const c of chunks) yield c; })(),
+type MockPart = { type: string; text?: string; error?: { message?: string } };
+const mockStream = (parts: MockPart[]) => ({
+    fullStream: (async function* () { for (const p of parts) yield p; })(),
 } as unknown as Awaited<ReturnType<typeof streamText>>);
 
 async function readEvents(res: Response) {
@@ -55,47 +52,52 @@ async function readEvents(res: Response) {
 
 describe('streamJsonProcess via SSE', () => {
     afterEach(() => vi.clearAllMocks());
-    it('chunk valid → progress ×2 + result', async () => {
-        mocked.mockReturnValueOnce(mockStream(['[{"a"', ':1}]']));
+    it('reasoning + answer chunk → progress (thinking/answer) + result', async () => {
+        mocked.mockReturnValueOnce(mockStream([
+            { type: 'reasoning-start' },
+            { type: 'reasoning-delta', text: 'memikirkan ' },
+            { type: 'reasoning-delta', text: 'jawaban' },
+            { type: 'text-delta', text: '[{"a"' },
+            { type: 'text-delta', text: ':1}]' },
+            { type: 'finish' },
+        ]));
         const events = await readEvents(processStreamResponse(streamJsonProcess('p', (p) => ({ ok: p }))));
-        expect(events.map((e) => e.type)).toEqual(['progress', 'progress', 'result']);
-        expect(events[0].data.text).toBe('[{"a"');
-        expect(events[1].data.text).toBe(':1}]');
-        expect(events[2].data).toEqual({ ok: [{ a: 1 }] });
+        expect(events.map((e) => e.type)).toEqual(['progress', 'progress', 'progress', 'progress', 'result']);
+        expect(events[0].data).toEqual({ text: 'memikirkan ', source: 'thinking' });
+        expect(events[1].data).toEqual({ text: 'jawaban', source: 'thinking' });
+        expect(events[2].data).toEqual({ text: '[{"a"', source: 'answer' });
+        expect(events[4].data).toEqual({ ok: [{ a: 1 }] });
         expect(mocked).toHaveBeenCalledTimes(1);
     });
     it('invalid → retry (re-prompt) → result', async () => {
-        mocked.mockReturnValueOnce(mockStream(['bukan json'])).mockReturnValueOnce(mockStream(['[{"ok":1}]']));
+        mocked.mockReturnValueOnce(mockStream([{ type: 'text-delta', text: 'bukan json' }, { type: 'finish' }]))
+            .mockReturnValueOnce(mockStream([{ type: 'text-delta', text: '[{"ok":1}]' }, { type: 'finish' }]));
         const events = await readEvents(processStreamResponse(streamJsonProcess('p', (p) => p)));
         expect(events.map((e) => e.type)).toEqual(['progress', 'retry', 'progress', 'result']);
         expect(mocked).toHaveBeenCalledTimes(2);
         expect(String(mocked.mock.calls[1][0].prompt)).toContain('PENTING:');
     });
     it('2x invalid → error event', async () => {
-        mocked.mockReturnValueOnce(mockStream(['garbage'])).mockReturnValueOnce(mockStream(['garbage']));
+        mocked.mockReturnValueOnce(mockStream([{ type: 'text-delta', text: 'garbage' }, { type: 'finish' }]))
+            .mockReturnValueOnce(mockStream([{ type: 'text-delta', text: 'garbage' }, { type: 'finish' }]));
         const events = await readEvents(processStreamResponse(streamJsonProcess('p', (p) => p)));
         expect(events.map((e) => e.type)).toEqual(['progress', 'retry', 'progress', 'error']);
         expect(events[3].data).toEqual({ success: false, error: 'AI tidak menghasilkan JSON valid.' });
     });
     it('finalize throw → error event', async () => {
-        mocked.mockReturnValueOnce(mockStream(['[{"a":1}]']));
+        mocked.mockReturnValueOnce(mockStream([{ type: 'text-delta', text: '[{"a":1}]' }, { type: 'finish' }]));
         const events = await readEvents(processStreamResponse(streamJsonProcess('p', () => { throw new Error('finalize boom'); })));
         expect(events[events.length - 1]).toEqual({ type: 'error', data: { success: false, error: 'finalize boom' } });
     });
-    it('textStream throw → error event', async () => {
-        mocked.mockReturnValueOnce({ textStream: (async function* () { throw new Error('stream boom'); })() } as unknown as Awaited<ReturnType<typeof streamText>>);
+    it('fullStream part error → error event', async () => {
+        mocked.mockReturnValueOnce(mockStream([{ type: 'error', error: { message: 'stream boom' } }]));
         const events = await readEvents(processStreamResponse(streamJsonProcess('p', (p) => p)));
         expect(events[events.length - 1]).toEqual({ type: 'error', data: { success: false, error: 'stream boom' } });
     });
-});
-
-describe('aiRequestBodyTransform', () => {
-    it('menyuntik thinking disabled + reasoning_effort low, pertahankan field lain', () => {
-        const out = aiRequestBodyTransform({ model: 'x', messages: [] });
-        expect(out.thinking).toEqual({ type: 'disabled' });
-        expect(out.reasoning_effort).toBe('low');
-        expect(out.model).toBe('x');
-        expect(out.messages).toEqual([]);
+    it('fullStream throw → error event', async () => {
+        mocked.mockReturnValueOnce({ fullStream: (async function* () { throw new Error('stream boom'); })() } as unknown as Awaited<ReturnType<typeof streamText>>);
+        const events = await readEvents(processStreamResponse(streamJsonProcess('p', (p) => p)));
+        expect(events[events.length - 1]).toEqual({ type: 'error', data: { success: false, error: 'stream boom' } });
     });
 });
 

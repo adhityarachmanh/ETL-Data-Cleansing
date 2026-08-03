@@ -3,21 +3,11 @@ import { NextRequest } from 'next/server';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { streamText } from 'ai';
 
-// Matikan thinking mode AI (terbukti 13x lebih lambat dengan hasil sama) + reasoning effort rendah
-export function aiRequestBodyTransform(args: Record<string, unknown>): Record<string, unknown> {
-    return {
-        ...args,
-        thinking: { type: 'disabled' },
-        reasoning_effort: 'low',
-    };
-}
-
-// Inisialisasi OpenAI-Compatible Client
+// Inisialisasi OpenAI-Compatible Client (thinking mode AI aktif secara default untuk akurasi)
 const provider = createOpenAICompatible({
     name: 'opencode-ai',
     apiKey: process.env.OPENCODE_AI_API_KEY,
     baseURL: (process.env.OPENCODE_AI_ENDPOINT || '').replace(/\/chat\/completions$/, ''),
-    transformRequestBody: aiRequestBodyTransform,
 });
 const aiModel = provider(process.env.OPENCODE_AI_MODEL || 'deepseek-v4-flash');
 
@@ -66,7 +56,7 @@ export function safeParseJson(text: string): any[] | null {
 const JSON_ONLY_REPROMPT = '\n\nPENTING: Kembalikan HANYA array JSON murni tanpa markdown fence, tanpa teks lain apa pun.';
 
 type ProcessEvent =
-    | { type: 'progress'; text: string }
+    | { type: 'progress'; text: string; source: 'thinking' | 'answer' }
     | { type: 'retry' }
     | { type: 'result'; payload: unknown }
     | { type: 'error'; message: string };
@@ -83,9 +73,17 @@ export async function* streamJsonProcess(
         });
         let full = '';
         try {
-            for await (const chunk of result.textStream) {
-                full += chunk;
-                yield { type: 'progress', text: chunk };
+            for await (const part of result.fullStream) {
+                if (part.type === 'reasoning-delta') {
+                    yield { type: 'progress', text: part.text, source: 'thinking' };
+                } else if (part.type === 'text-delta') {
+                    full += part.text;
+                    yield { type: 'progress', text: part.text, source: 'answer' };
+                } else if (part.type === 'error') {
+                    const streamError = part.error as { message?: string };
+                    yield { type: 'error', message: streamError.message || 'Stream error' };
+                    return;
+                }
             }
         } catch (err: unknown) {
             yield { type: 'error', message: (err as Error).message };
@@ -112,7 +110,7 @@ export function processStreamResponse(stream: AsyncGenerator<ProcessEvent>): Res
                 try {
                     for await (const evt of stream) {
                         if (evt.type === 'progress') {
-                            controller.enqueue(encoder.encode(sseEvent('progress', { text: evt.text })));
+                            controller.enqueue(encoder.encode(sseEvent('progress', { text: evt.text, source: evt.source })));
                         } else if (evt.type === 'retry') {
                             controller.enqueue(encoder.encode(sseEvent('retry', { message: 'Output tidak valid, mencoba ulang...' })));
                         } else if (evt.type === 'result') {
