@@ -1,6 +1,6 @@
 // File: app/page.tsx
 'use client';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ResultsPanel from './components/ResultsPanel';
 
 // Tipe Data Domain Referensi
@@ -358,61 +358,86 @@ export default function Home() {
   );
 
   // --- PROCESS AI ---
+  const [streamProgress, setStreamProgress] = useState('');
+  const progressRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (progressRef.current) {
+      progressRef.current.scrollTop = progressRef.current.scrollHeight;
+    }
+  }, [streamProgress]);
+
   const processAI = async (rawDataToProcess: any[]) => {
     setLoading(true);
     setResults([]);
+    setStreamProgress('');
+
+    const runSSE = async (body: Record<string, unknown>): Promise<void> => {
+      const response = await fetch('/api/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!response.body) throw new Error('Stream tidak tersedia');
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const blocks = buffer.split('\n\n');
+        buffer = blocks.pop() ?? '';
+        for (const block of blocks) {
+          const type = block.match(/^event: (.+)$/m)?.[1];
+          const data = block.match(/^data: (.+)$/m)?.[1];
+          if (!data) continue;
+          const payload = JSON.parse(data);
+          if (type === 'progress') {
+            setStreamProgress((prev) => (prev + (payload.text ?? '')).slice(-2000));
+          } else if (type === 'retry') {
+            setStreamProgress((prev) => prev + '\n⚠️ Output tidak valid, mencoba ulang...\n');
+          } else if (type === 'result') {
+            if (payload.success) {
+              setResults(payload.data);
+            } else {
+              showAlert('Gagal memproses: ' + payload.error, 'API Error');
+            }
+          } else if (type === 'error') {
+            showAlert('Gagal memproses: ' + payload.error, 'API Error');
+          }
+        }
+      }
+    };
 
     try {
       if (mainAppMode === 'PURE_NAME') {
-        const response = await fetch('/api/process', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            mode: 'PURE_NAME',
-            legalRefTable: legalRefList,
-            rawData: rawDataToProcess
-          }),
+        await runSSE({
+          mode: 'PURE_NAME',
+          legalRefTable: legalRefList,
+          rawData: rawDataToProcess,
         });
-
-        const resData = await response.json();
-        if (resData.success) {
-          setResults(resData.data);
-        } else {
-          showAlert('Gagal memproses Pure Name Stripper: ' + resData.error, 'API Error');
-        }
-        setLoading(false);
         return;
       }
 
       if (activeDomains.some(d => d.items.length === 0)) {
         showAlert("Domain master yang Anda uji masih kosong. Harap isi minimal 1 item master di domain tersebut!");
-        setLoading(false);
         return;
       }
 
-      const response = await fetch('/api/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          domains: activeDomains,
-          rawData: rawDataToProcess,
-          thresholds: {
-            autoApprove: autoApproveThreshold,
-            stewardReview: stewardReviewThreshold
-          }
-        }),
+      await runSSE({
+        domains: activeDomains,
+        rawData: rawDataToProcess,
+        thresholds: {
+          autoApprove: autoApproveThreshold,
+          stewardReview: stewardReviewThreshold
+        }
       });
-
-      const resData = await response.json();
-      if (resData.success) {
-        setResults(resData.data);
-      } else {
-        showAlert('Gagal memproses: ' + resData.error, 'API Error');
-      }
     } catch (err) {
       showAlert('Terjadi kesalahan jaringan saat memanggil AI.', 'Connection Error');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   // Handler Clear Hasil (stabil untuk React.memo)
@@ -915,6 +940,19 @@ export default function Home() {
           </div>
 
         </div>
+
+        {/* AI STREAMING PROGRESS PANEL */}
+        {loading && (
+          <div className="bg-gray-900 text-emerald-300 rounded-lg border border-gray-700 p-3 font-mono text-[11px] leading-relaxed shadow-sm">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">⚡ Progress AI (Streaming)</span>
+              <span className="animate-pulse text-gray-500">live</span>
+            </div>
+            <div ref={progressRef} className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words">
+              {streamProgress || 'Menunggu respons AI...'}
+            </div>
+          </div>
+        )}
 
         {/* RESULTS TABEL AUDIT TRAIL */}
         <ResultsPanel

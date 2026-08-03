@@ -1,13 +1,23 @@
 // File: app/api/process/route.ts
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { generateText } from 'ai';
+import { streamText } from 'ai';
+
+// Matikan thinking mode AI (terbukti 13x lebih lambat dengan hasil sama) + reasoning effort rendah
+export function aiRequestBodyTransform(args: Record<string, unknown>): Record<string, unknown> {
+    return {
+        ...args,
+        thinking: { type: 'disabled' },
+        reasoning_effort: 'low',
+    };
+}
 
 // Inisialisasi OpenAI-Compatible Client
 const provider = createOpenAICompatible({
     name: 'opencode-ai',
     apiKey: process.env.OPENCODE_AI_API_KEY,
     baseURL: (process.env.OPENCODE_AI_ENDPOINT || '').replace(/\/chat\/completions$/, ''),
+    transformRequestBody: aiRequestBodyTransform,
 });
 const aiModel = provider(process.env.OPENCODE_AI_MODEL || 'deepseek-v4-flash');
 
@@ -52,19 +62,86 @@ export function safeParseJson(text: string): any[] | null {
     }
 }
 
-// Panggil AI dan pastikan hasil berupa array JSON valid; retry sekali dengan re-prompt
+// Panggil AI (streaming) dan pastikan hasil berupa array JSON valid; retry sekali dengan re-prompt
 const JSON_ONLY_REPROMPT = '\n\nPENTING: Kembalikan HANYA array JSON murni tanpa markdown fence, tanpa teks lain apa pun.';
 
-export async function generateJsonArray(prompt: string): Promise<unknown[] | null> {
+type ProcessEvent =
+    | { type: 'progress'; text: string }
+    | { type: 'retry' }
+    | { type: 'result'; payload: unknown }
+    | { type: 'error'; message: string };
+
+export async function* streamJsonProcess(
+    prompt: string,
+    finalize: (parsed: unknown[]) => unknown,
+): AsyncGenerator<ProcessEvent> {
     for (let attempt = 0; attempt < 2; attempt++) {
-        const response = await generateText({
+        if (attempt === 1) yield { type: 'retry' };
+        const result = streamText({
             model: aiModel,
             prompt: attempt === 0 ? prompt : prompt + JSON_ONLY_REPROMPT,
         });
-        const parsed = safeParseJson(response.text || '');
-        if (parsed) return parsed;
+        let full = '';
+        try {
+            for await (const chunk of result.textStream) {
+                full += chunk;
+                yield { type: 'progress', text: chunk };
+            }
+        } catch (err: unknown) {
+            yield { type: 'error', message: (err as Error).message };
+            return;
+        }
+        const parsed = safeParseJson(full);
+        if (parsed) {
+            yield { type: 'result', payload: finalize(parsed) };
+            return;
+        }
     }
-    return null;
+    yield { type: 'error', message: 'AI tidak menghasilkan JSON valid.' };
+}
+
+export function sseEvent(name: string, data: unknown): string {
+    return `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
+}
+
+export function processStreamResponse(stream: AsyncGenerator<ProcessEvent>): Response {
+    const encoder = new TextEncoder();
+    return new Response(
+        new ReadableStream({
+            async start(controller) {
+                try {
+                    for await (const evt of stream) {
+                        if (evt.type === 'progress') {
+                            controller.enqueue(encoder.encode(sseEvent('progress', { text: evt.text })));
+                        } else if (evt.type === 'retry') {
+                            controller.enqueue(encoder.encode(sseEvent('retry', { message: 'Output tidak valid, mencoba ulang...' })));
+                        } else if (evt.type === 'result') {
+                            controller.enqueue(encoder.encode(sseEvent('result', evt.payload)));
+                        } else {
+                            controller.enqueue(encoder.encode(sseEvent('error', { success: false, error: evt.message })));
+                        }
+                    }
+                } catch (err: unknown) {
+                    controller.enqueue(encoder.encode(sseEvent('error', { success: false, error: (err as Error).message })));
+                } finally {
+                    controller.close();
+                }
+            },
+        }),
+        {
+            headers: {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                Connection: 'keep-alive',
+            },
+        },
+    );
+}
+
+export function immediateResultEvent(payload: unknown): Response {
+    return new Response(sseEvent('result', payload), {
+        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
+    });
 }
 
 interface PureNameRawItem {
@@ -207,7 +284,7 @@ export async function POST(req: NextRequest) {
         // --- MODE 2: PURE NAME STRIPPER (FITUR PAK ZOEL - PEMBERSIH EMBEL-EMBEL LEGALITAS) ---
         if (mode === 'PURE_NAME') {
             if (!Array.isArray(rawData) || rawData.length === 0) {
-                return NextResponse.json({ success: true, mode: 'PURE_NAME', data: [] });
+                return immediateResultEvent({ success: true, mode: 'PURE_NAME', data: [] });
             }
 
             const noiseList = Array.isArray(legalRefTable) && legalRefTable.length > 0
@@ -244,12 +321,13 @@ Kembalikan HANYA array JSON dengan format persis seperti ini:
 ]
 `;
 
-            const aiResultJson = await generateJsonArray(pureNamePrompt);
-            if (!aiResultJson) {
-                return NextResponse.json({ success: false, error: 'AI tidak menghasilkan JSON valid.' }, { status: 500 });
-            }
-
-            return NextResponse.json({ success: true, mode: 'PURE_NAME', data: buildPureNameResults(aiResultJson, formattedRawForPureName) });
+            return processStreamResponse(
+                streamJsonProcess(pureNamePrompt, (parsed) => ({
+                    success: true,
+                    mode: 'PURE_NAME',
+                    data: buildPureNameResults(parsed, formattedRawForPureName),
+                }))
+            );
         }
 
         // --- MODE 1: FUZZY MATCHING MULTI-DOMAIN SSOT ---
@@ -257,14 +335,11 @@ Kembalikan HANYA array JSON dengan format persis seperti ini:
         const stewardReviewMin = Number(thresholds?.stewardReview) || 75;
 
         if (!domains || !Array.isArray(domains) || domains.length === 0) {
-            return NextResponse.json(
-                { success: false, error: 'Minimal harus ada 1 domain referensi master.' },
-                { status: 400 }
-            );
+            return immediateResultEvent({ success: false, error: 'Minimal harus ada 1 domain referensi master.' });
         }
 
         if (!Array.isArray(rawData) || rawData.length === 0) {
-            return NextResponse.json({ success: true, data: [] });
+            return immediateResultEvent({ success: true, data: [] });
         }
 
         // 1. Format Domain Master untuk dimasukkan ke Prompt AI
@@ -330,18 +405,15 @@ Aturan Skoring & Anomali Kontradiksi:
 4. Tidak Cocok / Berbeda Jauh: isi "matched_index" dengan null dan berikan confidence < 50.0.
 `;
 
-        // 4. Panggil AI
-        const aiResultJson = await generateJsonArray(prompt);
-        if (!aiResultJson) {
-            return NextResponse.json({ success: false, error: 'AI tidak menghasilkan JSON valid.' }, { status: 500 });
-        }
-
-        // 5. Olah Hasil & Susun Output Audit Trail Multi-Domain
-        const finalResults = buildFinalResults(aiResultJson, formattedRaw, domains, autoApproveMin, stewardReviewMin);
-
-        return NextResponse.json({ success: true, data: finalResults });
+        // 4. Panggil AI (streaming)
+        return processStreamResponse(
+            streamJsonProcess(prompt, (parsed) => ({
+                success: true,
+                data: buildFinalResults(parsed, formattedRaw, domains, autoApproveMin, stewardReviewMin),
+            }))
+        );
     } catch (error: any) {
         console.error('API Error:', error);
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+        return immediateResultEvent({ success: false, error: error.message });
     }
 }
