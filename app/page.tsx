@@ -406,7 +406,7 @@ export default function Home() {
         showAlert('Gagal memproses: ' + resData.error, 'API Error');
       }
     } catch (err) {
-      showAlert('Terjadi kesalahan jaringan saat memanggil Gemini API.', 'Connection Error');
+      showAlert('Terjadi kesalahan jaringan saat memanggil AI.', 'Connection Error');
     }
     setLoading(false);
   };

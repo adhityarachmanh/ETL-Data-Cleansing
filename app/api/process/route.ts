@@ -1,9 +1,15 @@
 // File: app/api/process/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { generateText } from 'ai';
 
-// Inisialisasi Gemini Client
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// Inisialisasi OpenAI-Compatible Client
+const provider = createOpenAICompatible({
+    name: 'opencode-ai',
+    apiKey: process.env.OPENCODE_AI_API_KEY,
+    baseURL: (process.env.OPENCODE_AI_ENDPOINT || '').replace(/\/chat\/completions$/, ''),
+});
+const aiModel = provider(process.env.OPENCODE_AI_MODEL || 'deepseek-v4-flash');
 
 // Fungsi Cleansing Text Sederhana
 function normalizeText(value: string): string {
@@ -24,6 +30,175 @@ function decideStatus(scores: number[], autoApproveMin: number = 90, stewardRevi
     return 'NO_MATCH';
 }
 
+// Ekstrak array JSON dari respons AI (tahan terhadap markdown fence, teks tambahan, trailing newline)
+export function extractJsonArray(text: string): string | null {
+    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    const candidate = fenced ? fenced[1] : text;
+    const start = candidate.indexOf('[');
+    const end = candidate.lastIndexOf(']');
+    if (start === -1 || end === -1 || end <= start) return null;
+    return candidate.slice(start, end + 1);
+}
+
+// Parse respons AI menjadi array; null jika tidak valid
+export function safeParseJson(text: string): any[] | null {
+    const cleaned = extractJsonArray(text);
+    if (!cleaned) return null;
+    try {
+        const parsed = JSON.parse(cleaned);
+        return Array.isArray(parsed) ? parsed : null;
+    } catch {
+        return null;
+    }
+}
+
+// Panggil AI dan pastikan hasil berupa array JSON valid; retry sekali dengan re-prompt
+const JSON_ONLY_REPROMPT = '\n\nPENTING: Kembalikan HANYA array JSON murni tanpa markdown fence, tanpa teks lain apa pun.';
+
+export async function generateJsonArray(prompt: string): Promise<unknown[] | null> {
+    for (let attempt = 0; attempt < 2; attempt++) {
+        const response = await generateText({
+            model: aiModel,
+            prompt: attempt === 0 ? prompt : prompt + JSON_ONLY_REPROMPT,
+        });
+        const parsed = safeParseJson(response.text || '');
+        if (parsed) return parsed;
+    }
+    return null;
+}
+
+interface PureNameRawItem {
+    raw_index: number;
+    raw_name: string;
+}
+
+interface PureNameResultRow {
+    raw_index: number;
+    original: string;
+    cleansed_pure_name: string | null;
+    stripped_noise: string[];
+}
+
+interface MatchRawItem {
+    raw_index: number;
+    raw_values: { [key: string]: string };
+}
+
+interface DomainRef {
+    id: string;
+    name: string;
+    items: string[];
+}
+
+interface MatchAiRow {
+    raw_index: number;
+    matches?: {
+        [key: string]: { matched_index?: number | null; confidence?: number };
+    };
+    warning_note?: string | null;
+}
+
+interface DomainMatchResult {
+    raw_val: string;
+    matched_val: string;
+    confidence: number;
+}
+
+interface FinalResultRow {
+    raw_index: number;
+    domain_matches: { [key: string]: DomainMatchResult };
+    ai_method: string;
+    ai_status: string;
+    severity: string;
+    stewardship_status: string;
+    warning_note: string | null;
+}
+
+// Susun hasil PURE_NAME: isi baris yang di-omit AI, urutkan ascending
+export function buildPureNameResults(aiResultJson: unknown[], formattedRaw: PureNameRawItem[]): PureNameResultRow[] {
+    const map = new Map<number, PureNameResultRow>();
+    aiResultJson.forEach((res) => {
+        const row = res as Partial<PureNameResultRow>;
+        const rawItem = formattedRaw.find((r) => r.raw_index === Number(row.raw_index));
+        if (!rawItem) return;
+        map.set(Number(row.raw_index), res as PureNameResultRow);
+    });
+    formattedRaw.forEach((r) => {
+        if (!map.has(r.raw_index)) {
+            map.set(r.raw_index, {
+                raw_index: r.raw_index,
+                original: r.raw_name,
+                cleansed_pure_name: null,
+                stripped_noise: [],
+            });
+        }
+    });
+    return [...map.values()].sort((a, b) => a.raw_index - b.raw_index);
+}
+
+// Susun hasil fuzzy multi-domain: sanitasi index/confidence, isi baris yang di-omit AI, urutkan ascending
+export function buildFinalResults(
+    aiResultJson: unknown[],
+    formattedRaw: MatchRawItem[],
+    domains: DomainRef[],
+    autoApproveMin: number,
+    stewardReviewMin: number,
+): FinalResultRow[] {
+    const aiMethodLabel = `${(process.env.OPENCODE_AI_MODEL || 'deepseek-v4-flash').toUpperCase().replace(/[-.]/g, '_')}_FUZZY_MULTIDOMAIN`;
+
+    const makeRow = (rawItem: MatchRawItem, domainMatches: { [key: string]: DomainMatchResult }, warning: string | null): FinalResultRow => {
+        const scores = domains.map((d) => domainMatches[d.id]?.confidence ?? 0);
+        const status = decideStatus(scores, autoApproveMin, stewardReviewMin);
+        return {
+            raw_index: rawItem.raw_index,
+            domain_matches: domainMatches,
+            ai_method: aiMethodLabel,
+            ai_status: status,
+            severity: status === 'NO_MATCH' ? 'High' : status === 'REVIEW' ? 'Medium' : 'Low',
+            stewardship_status: status === 'AUTO_APPROVE' ? 'APPROVED' : 'OPEN',
+            warning_note: warning,
+        };
+    };
+
+    const resultMap = new Map<number, FinalResultRow>();
+
+    aiResultJson.forEach((res) => {
+        const aiRow = res as MatchAiRow;
+        const rawItem = formattedRaw.find((r) => r.raw_index === Number(aiRow.raw_index));
+        if (!rawItem) return;
+        const domainMatches: { [key: string]: DomainMatchResult } = {};
+        domains.forEach((d) => {
+            const matchInfo = aiRow.matches?.[d.id];
+            const idx = Number(matchInfo?.matched_index);
+            const matchedIndex = Number.isInteger(idx) && idx >= 0 && idx < d.items.length ? idx : null;
+            const masterText = matchedIndex === null ? 'TIDAK DITEMUKAN' : d.items[matchedIndex];
+            const rawConfidence = Number(matchInfo?.confidence);
+            const confidence = matchedIndex === null || isNaN(rawConfidence) ? 0 : rawConfidence;
+            domainMatches[d.id] = {
+                raw_val: rawItem.raw_values?.[d.id] || '-',
+                matched_val: masterText,
+                confidence: confidence,
+            };
+        });
+        resultMap.set(rawItem.raw_index, makeRow(rawItem, domainMatches, aiRow.warning_note || null));
+    });
+
+    formattedRaw.forEach((rawItem) => {
+        if (resultMap.has(rawItem.raw_index)) return;
+        const domainMatches: { [key: string]: DomainMatchResult } = {};
+        domains.forEach((d) => {
+            domainMatches[d.id] = {
+                raw_val: rawItem.raw_values?.[d.id] || '-',
+                matched_val: 'TIDAK DITEMUKAN',
+                confidence: 0,
+            };
+        });
+        resultMap.set(rawItem.raw_index, makeRow(rawItem, domainMatches, null));
+    });
+
+    return [...resultMap.values()].sort((a, b) => a.raw_index - b.raw_index);
+}
+
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
@@ -31,6 +206,10 @@ export async function POST(req: NextRequest) {
 
         // --- MODE 2: PURE NAME STRIPPER (FITUR PAK ZOEL - PEMBERSIH EMBEL-EMBEL LEGALITAS) ---
         if (mode === 'PURE_NAME') {
+            if (!Array.isArray(rawData) || rawData.length === 0) {
+                return NextResponse.json({ success: true, mode: 'PURE_NAME', data: [] });
+            }
+
             const noiseList = Array.isArray(legalRefTable) && legalRefTable.length > 0
                 ? legalRefTable
                 : ["PT", "CV", "UD", "PERSERO", "(PERSERO)", "TBK", ".TBK", "FIRMA", "NV", "INC", "LTD", "CORP"];
@@ -65,18 +244,12 @@ Kembalikan HANYA array JSON dengan format persis seperti ini:
 ]
 `;
 
-            const response = await ai.models.generateContent({
-                model: 'gemini-3.6-flash',
-                contents: pureNamePrompt,
-                config: {
-                    responseMimeType: 'application/json',
-                },
-            });
+            const aiResultJson = await generateJsonArray(pureNamePrompt);
+            if (!aiResultJson) {
+                return NextResponse.json({ success: false, error: 'AI tidak menghasilkan JSON valid.' }, { status: 500 });
+            }
 
-            const aiResultText = (response.text || '').replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
-            const aiResultJson = JSON.parse(aiResultText || '[]');
-
-            return NextResponse.json({ success: true, mode: 'PURE_NAME', data: aiResultJson });
+            return NextResponse.json({ success: true, mode: 'PURE_NAME', data: buildPureNameResults(aiResultJson, formattedRawForPureName) });
         }
 
         // --- MODE 1: FUZZY MATCHING MULTI-DOMAIN SSOT ---
@@ -88,6 +261,10 @@ Kembalikan HANYA array JSON dengan format persis seperti ini:
                 { success: false, error: 'Minimal harus ada 1 domain referensi master.' },
                 { status: 400 }
             );
+        }
+
+        if (!Array.isArray(rawData) || rawData.length === 0) {
+            return NextResponse.json({ success: true, data: [] });
         }
 
         // 1. Format Domain Master untuk dimasukkan ke Prompt AI
@@ -114,7 +291,7 @@ Kembalikan HANYA array JSON dengan format persis seperti ini:
             };
         });
 
-        // 3. Siapkan Prompt Dinamis untuk Gemini (Mendukung N-Domain)
+        // 3. Siapkan Prompt Dinamis untuk AI (Mendukung N-Domain)
         const prompt = `
 Anda adalah AI Data Engineer. Tugas Anda mencocokkan Data Mentah (Raw Data) ke beberapa Domain Master Referensi berikut:
 
@@ -153,60 +330,14 @@ Aturan Skoring & Anomali Kontradiksi:
 4. Tidak Cocok / Berbeda Jauh: isi "matched_index" dengan null dan berikan confidence < 50.0.
 `;
 
-        // 4. Panggil Gemini AI
-        const response = await ai.models.generateContent({
-            model: 'gemini-3.6-flash',
-            contents: prompt,
-            config: {
-                responseMimeType: 'application/json',
-            },
-        });
-
-        const aiResultText = (response.text || '').replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
-        const aiResultJson = JSON.parse(aiResultText || '[]');
+        // 4. Panggil AI
+        const aiResultJson = await generateJsonArray(prompt);
+        if (!aiResultJson) {
+            return NextResponse.json({ success: false, error: 'AI tidak menghasilkan JSON valid.' }, { status: 500 });
+        }
 
         // 5. Olah Hasil & Susun Output Audit Trail Multi-Domain
-        const finalResults = aiResultJson.map((res: any) => {
-            const rawItem = formattedRaw.find((r: any) => r.raw_index === res.raw_index);
-            const domainMatches: { [key: string]: any } = {};
-            const scores: number[] = [];
-
-            domains.forEach((d: any) => {
-                const matchInfo = res.matches?.[d.id];
-                const matchedIndex = matchInfo?.matched_index;
-
-                // Pastikan confidence selalu berupa number murni
-                const rawConfidence = Number(matchInfo?.confidence);
-                const confidence = !isNaN(rawConfidence) ? rawConfidence : 0;
-
-                const masterText =
-                    matchedIndex !== null &&
-                        matchedIndex !== undefined &&
-                        d.items[matchedIndex] !== undefined
-                        ? d.items[matchedIndex]
-                        : 'TIDAK DITEMUKAN';
-
-                domainMatches[d.id] = {
-                    raw_val: rawItem?.raw_values?.[d.id] || '-',
-                    matched_val: masterText,
-                    confidence: confidence,
-                };
-
-                scores.push(confidence);
-            });
-
-            const status = decideStatus(scores, autoApproveMin, stewardReviewMin);
-
-            return {
-                raw_index: res.raw_index,
-                domain_matches: domainMatches,
-                ai_method: 'GEMINI_3.6_FLASH_FUZZY_MULTIDOMAIN',
-                ai_status: status,
-                severity: status === 'NO_MATCH' ? 'High' : status === 'REVIEW' ? 'Medium' : 'Low',
-                stewardship_status: status === 'AUTO_APPROVE' ? 'APPROVED' : 'OPEN',
-                warning_note: res.warning_note || null,
-            };
-        });
+        const finalResults = buildFinalResults(aiResultJson, formattedRaw, domains, autoApproveMin, stewardReviewMin);
 
         return NextResponse.json({ success: true, data: finalResults });
     } catch (error: any) {
