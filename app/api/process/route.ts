@@ -2,6 +2,7 @@
 import { NextRequest } from 'next/server';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { streamText } from 'ai';
+import { createResultCache, hashInput } from './cache';
 
 // Inisialisasi OpenAI-Compatible Client (thinking mode AI aktif secara default untuk akurasi)
 const provider = createOpenAICompatible({
@@ -10,6 +11,9 @@ const provider = createOpenAICompatible({
     baseURL: (process.env.OPENCODE_AI_ENDPOINT || '').replace(/\/chat\/completions$/, ''),
 });
 const aiModel = provider(process.env.OPENCODE_AI_MODEL || 'deepseek-v4-flash');
+
+// Cache hasil AI: eksekusi ulang dengan input identik langsung mengembalikan hasil (tanpa panggil AI)
+const resultCache = createResultCache();
 
 // Fungsi Cleansing Text Sederhana
 function normalizeText(value: string): string {
@@ -279,10 +283,21 @@ export async function POST(req: NextRequest) {
         const body = await req.json();
         const { mode, domains, rawData, thresholds, legalRefTable } = body;
 
+        // Key cache: input request + model (hasil beda model tidak boleh saling menimpa)
+        const cacheKey = hashInput({
+            mode, domains, rawData, thresholds, legalRefTable,
+            model: process.env.OPENCODE_AI_MODEL || 'deepseek-v4-flash',
+        });
+
         // --- MODE 2: PURE NAME STRIPPER (FITUR PAK ZOEL - PEMBERSIH EMBEL-EMBEL LEGALITAS) ---
         if (mode === 'PURE_NAME') {
             if (!Array.isArray(rawData) || rawData.length === 0) {
                 return immediateResultEvent({ success: true, mode: 'PURE_NAME', data: [] });
+            }
+
+            const cached = resultCache.get(cacheKey);
+            if (cached !== undefined) {
+                return immediateResultEvent(cached);
             }
 
             const noiseList = Array.isArray(legalRefTable) && legalRefTable.length > 0
@@ -320,11 +335,15 @@ Kembalikan HANYA array JSON dengan format persis seperti ini:
 `;
 
             return processStreamResponse(
-                streamJsonProcess(pureNamePrompt, (parsed) => ({
-                    success: true,
-                    mode: 'PURE_NAME',
-                    data: buildPureNameResults(parsed, formattedRawForPureName),
-                }))
+                streamJsonProcess(pureNamePrompt, (parsed) => {
+                    const payload = {
+                        success: true,
+                        mode: 'PURE_NAME',
+                        data: buildPureNameResults(parsed, formattedRawForPureName),
+                    };
+                    resultCache.set(cacheKey, payload);
+                    return payload;
+                })
             );
         }
 
@@ -338,6 +357,11 @@ Kembalikan HANYA array JSON dengan format persis seperti ini:
 
         if (!Array.isArray(rawData) || rawData.length === 0) {
             return immediateResultEvent({ success: true, data: [] });
+        }
+
+        const cachedMatch = resultCache.get(cacheKey);
+        if (cachedMatch !== undefined) {
+            return immediateResultEvent(cachedMatch);
         }
 
         // 1. Format Domain Master untuk dimasukkan ke Prompt AI
@@ -405,10 +429,14 @@ Aturan Skoring & Anomali Kontradiksi:
 
         // 4. Panggil AI (streaming)
         return processStreamResponse(
-            streamJsonProcess(prompt, (parsed) => ({
-                success: true,
-                data: buildFinalResults(parsed, formattedRaw, domains, autoApproveMin, stewardReviewMin),
-            }))
+            streamJsonProcess(prompt, (parsed) => {
+                const payload = {
+                    success: true,
+                    data: buildFinalResults(parsed, formattedRaw, domains, autoApproveMin, stewardReviewMin),
+                };
+                resultCache.set(cacheKey, payload);
+                return payload;
+            })
         );
     } catch (error: any) {
         console.error('API Error:', error);
