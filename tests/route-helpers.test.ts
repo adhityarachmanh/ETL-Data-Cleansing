@@ -14,6 +14,33 @@ describe('extractJsonArray', () => {
     });
 });
 
+import { extractJsonObject, safeParseJsonObject } from '../app/api/governance/analyze-raw/route';
+
+describe('extractJsonObject', () => {
+    it('extract dari fenced block dengan trailing newline', () => {
+        const t = '```json\n{"a":1}\n```\n';
+        expect(JSON.parse(extractJsonObject(t)!)).toEqual({ a: 1 });
+    });
+    it('terima plain JSON object', () => {
+        expect(extractJsonObject('{"a":1}')).toBe('{"a":1}');
+    });
+    it('tolak tanpa braces', () => {
+        expect(extractJsonObject('tidak ada json')).toBeNull();
+    });
+});
+
+describe('safeParseJsonObject', () => {
+    it('parse fenced + trailing newline', () => {
+        expect(safeParseJsonObject('teks\n```json\n{"x":1}\n```\n')).toEqual({ x: 1 });
+    });
+    it('garbage → null', () => {
+        expect(safeParseJsonObject('{invalid')).toBeNull();
+    });
+    it('array berisi object → extract object (resilient)', () => {
+        expect(safeParseJsonObject('[{"a":1}]')).toEqual({ a: 1 });
+    });
+});
+
 describe('safeParseJson', () => {
     it('parse fenced + trailing newline', () => {
         expect(safeParseJson('teks\n```json\n[{"x":1}]\n```\n')).toEqual([{ x: 1 }]);
@@ -98,6 +125,45 @@ describe('streamJsonProcess via SSE', () => {
         mocked.mockReturnValueOnce({ fullStream: (async function* () { throw new Error('stream boom'); })() } as unknown as Awaited<ReturnType<typeof streamText>>);
         const events = await readEvents(processStreamResponse(streamJsonProcess('p', (p) => p)));
         expect(events[events.length - 1]).toEqual({ type: 'error', data: { success: false, error: 'stream boom' } });
+    });
+});
+
+import { streamJsonProcess as streamJsonProcessObj, processStreamResponse as processStreamResponseObj } from '../lib/stream';
+
+describe('streamJsonProcess dengan object parser (governance)', () => {
+    afterEach(() => vi.clearAllMocks());
+    it('reasoning + objek JSON → progress thinking + result objek', async () => {
+        mocked.mockReturnValueOnce(mockStream([
+            { type: 'reasoning-delta', text: 'analisa ' },
+            { type: 'reasoning-delta', text: 'data' },
+            { type: 'text-delta', text: '{"a":1}' },
+            { type: 'finish' },
+        ]));
+        const events = await readEvents(processStreamResponseObj(streamJsonProcessObj('p', (p) => ({ ok: p }), safeParseJsonObject)));
+        expect(events.map((e) => e.type)).toEqual(['progress', 'progress', 'progress', 'result']);
+        expect(events[0].data).toEqual({ text: 'analisa ', source: 'thinking' });
+        expect(events[3].data).toEqual({ ok: { a: 1 } });
+        expect(mocked).toHaveBeenCalledTimes(1);
+    });
+    it('output array berisi objek → dianggap valid (resilient) tanpa retry', async () => {
+        mocked.mockReturnValueOnce(mockStream([{ type: 'text-delta', text: '[{"a":1}]' }, { type: 'finish' }]));
+        const events = await readEvents(processStreamResponseObj(streamJsonProcessObj('p', (p) => p, safeParseJsonObject)));
+        expect(events.map((e) => e.type)).toEqual(['progress', 'result']);
+        expect(events[1].data).toEqual({ a: 1 });
+        expect(mocked).toHaveBeenCalledTimes(1);
+    });
+    it('output bukan objek → retry → result objek', async () => {
+        mocked.mockReturnValueOnce(mockStream([{ type: 'text-delta', text: 'bukan json' }, { type: 'finish' }]))
+            .mockReturnValueOnce(mockStream([{ type: 'text-delta', text: '{"ok":1}' }, { type: 'finish' }]));
+        const events = await readEvents(processStreamResponseObj(streamJsonProcessObj('p', (p) => p, safeParseJsonObject)));
+        expect(events.map((e) => e.type)).toEqual(['progress', 'retry', 'progress', 'result']);
+        expect(events[3].data).toEqual({ ok: 1 });
+    });
+    it('2x invalid object → error event', async () => {
+        mocked.mockReturnValueOnce(mockStream([{ type: 'text-delta', text: 'garbage' }, { type: 'finish' }]))
+            .mockReturnValueOnce(mockStream([{ type: 'text-delta', text: 'garbage' }, { type: 'finish' }]));
+        const events = await readEvents(processStreamResponseObj(streamJsonProcessObj('p', (p) => p, safeParseJsonObject)));
+        expect(events.map((e) => e.type)).toEqual(['progress', 'retry', 'progress', 'error']);
     });
 });
 

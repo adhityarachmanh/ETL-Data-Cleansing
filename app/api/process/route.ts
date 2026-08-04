@@ -1,16 +1,15 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, prefer-const, @typescript-eslint/no-unused-vars */
 // File: app/api/process/route.ts
 import { NextRequest } from 'next/server';
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { streamText } from 'ai';
+import {
+    streamJsonProcess,
+    processStreamResponse,
+    immediateResultEvent,
+} from '../../../lib/stream';
 import { createResultCache, hashInput } from './cache';
 
-// Inisialisasi OpenAI-Compatible Client (thinking mode AI aktif secara default untuk akurasi)
-const provider = createOpenAICompatible({
-    name: 'opencode-ai',
-    apiKey: process.env.OPENCODE_AI_API_KEY,
-    baseURL: (process.env.OPENCODE_AI_ENDPOINT || '').replace(/\/chat\/completions$/, ''),
-});
-const aiModel = provider(process.env.OPENCODE_AI_MODEL || 'deepseek-v4-flash');
+// Re-export helper bersama agar konsumen/tests tetap bisa mengimpornya dari route ini
+export { extractJsonArray, safeParseJson, streamJsonProcess, sseEvent, processStreamResponse, immediateResultEvent } from '../../../lib/stream';
 
 // Cache hasil AI: eksekusi ulang dengan input identik langsung mengembalikan hasil (tanpa panggil AI)
 const resultCache = createResultCache();
@@ -32,118 +31,6 @@ function decideStatus(scores: number[], autoApproveMin: number = 90, stewardRevi
     if (avg >= autoApproveMin) return 'AUTO_APPROVE';
     if (avg >= stewardReviewMin) return 'REVIEW';
     return 'NO_MATCH';
-}
-
-// Ekstrak array JSON dari respons AI (tahan terhadap markdown fence, teks tambahan, trailing newline)
-export function extractJsonArray(text: string): string | null {
-    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    const candidate = fenced ? fenced[1] : text;
-    const start = candidate.indexOf('[');
-    const end = candidate.lastIndexOf(']');
-    if (start === -1 || end === -1 || end <= start) return null;
-    return candidate.slice(start, end + 1);
-}
-
-// Parse respons AI menjadi array; null jika tidak valid
-export function safeParseJson(text: string): any[] | null {
-    const cleaned = extractJsonArray(text);
-    if (!cleaned) return null;
-    try {
-        const parsed = JSON.parse(cleaned);
-        return Array.isArray(parsed) ? parsed : null;
-    } catch {
-        return null;
-    }
-}
-
-// Panggil AI (streaming) dan pastikan hasil berupa array JSON valid; retry sekali dengan re-prompt
-const JSON_ONLY_REPROMPT = '\n\nPENTING: Kembalikan HANYA array JSON murni tanpa markdown fence, tanpa teks lain apa pun.';
-
-type ProcessEvent =
-    | { type: 'progress'; text: string; source: 'thinking' | 'answer' }
-    | { type: 'retry' }
-    | { type: 'result'; payload: unknown }
-    | { type: 'error'; message: string };
-
-export async function* streamJsonProcess(
-    prompt: string,
-    finalize: (parsed: unknown[]) => unknown,
-): AsyncGenerator<ProcessEvent> {
-    for (let attempt = 0; attempt < 2; attempt++) {
-        if (attempt === 1) yield { type: 'retry' };
-        const result = streamText({
-            model: aiModel,
-            prompt: attempt === 0 ? prompt : prompt + JSON_ONLY_REPROMPT,
-        });
-        let full = '';
-        try {
-            for await (const part of result.fullStream) {
-                if (part.type === 'reasoning-delta') {
-                    yield { type: 'progress', text: part.text, source: 'thinking' };
-                } else if (part.type === 'text-delta') {
-                    full += part.text;
-                    yield { type: 'progress', text: part.text, source: 'answer' };
-                } else if (part.type === 'error') {
-                    const streamError = part.error as { message?: string };
-                    yield { type: 'error', message: streamError.message || 'Stream error' };
-                    return;
-                }
-            }
-        } catch (err: unknown) {
-            yield { type: 'error', message: (err as Error).message };
-            return;
-        }
-        const parsed = safeParseJson(full);
-        if (parsed) {
-            yield { type: 'result', payload: finalize(parsed) };
-            return;
-        }
-    }
-    yield { type: 'error', message: 'AI tidak menghasilkan JSON valid.' };
-}
-
-export function sseEvent(name: string, data: unknown): string {
-    return `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
-}
-
-export function processStreamResponse(stream: AsyncGenerator<ProcessEvent>): Response {
-    const encoder = new TextEncoder();
-    return new Response(
-        new ReadableStream({
-            async start(controller) {
-                try {
-                    for await (const evt of stream) {
-                        if (evt.type === 'progress') {
-                            controller.enqueue(encoder.encode(sseEvent('progress', { text: evt.text, source: evt.source })));
-                        } else if (evt.type === 'retry') {
-                            controller.enqueue(encoder.encode(sseEvent('retry', { message: 'Output tidak valid, mencoba ulang...' })));
-                        } else if (evt.type === 'result') {
-                            controller.enqueue(encoder.encode(sseEvent('result', evt.payload)));
-                        } else {
-                            controller.enqueue(encoder.encode(sseEvent('error', { success: false, error: evt.message })));
-                        }
-                    }
-                } catch (err: unknown) {
-                    controller.enqueue(encoder.encode(sseEvent('error', { success: false, error: (err as Error).message })));
-                } finally {
-                    controller.close();
-                }
-            },
-        }),
-        {
-            headers: {
-                'Content-Type': 'text/event-stream',
-                'Cache-Control': 'no-cache',
-                Connection: 'keep-alive',
-            },
-        },
-    );
-}
-
-export function immediateResultEvent(payload: unknown): Response {
-    return new Response(sseEvent('result', payload), {
-        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
-    });
 }
 
 interface PureNameRawItem {
